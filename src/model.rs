@@ -1,6 +1,9 @@
 use nannou::prelude::*;
 mod world;
 use world::World;
+
+pub const WINDOW_SIZE: u32 = 800;
+
 pub struct Camera {
     pub pos: Point2,
     pub zoom: f32,
@@ -28,6 +31,7 @@ pub struct InputState {
     pub minus: bool,
     pub mouse_pos: Point2,
     pub mouse_pressed: bool,
+    pub skip_toggled: bool,
 }
 impl InputState {
     pub fn new() -> InputState {
@@ -40,6 +44,7 @@ impl InputState {
             minus: false,
             mouse_pos: Point2::new(0.0, 0.0),
             mouse_pressed: false,
+            skip_toggled: false,
         }
     }
     pub fn update(&mut self, event: Event) {
@@ -64,6 +69,7 @@ impl InputState {
                     Key::Right => self.right = false,
                     Key::Equals => self.plus = false,
                     Key::Minus => self.minus = false,
+                    Key::Space => self.skip_toggled = !self.skip_toggled,
                     _ => (),
                 },
                 MouseMoved(pos) => self.mouse_pos = pos,
@@ -79,66 +85,92 @@ impl Model {
     pub fn new() -> Model {
         Model {
             camera: Camera {
-                pos: Point2::new(0.0, 0.0),
+                pos: Point2::new(100.0, 100.0),
                 zoom: 2.0,
             },
             world: World::new(),
             input_state: InputState::new(),
         }
     }
+    pub fn within_view(&self, pos: Point2) -> bool {
+        const LOWER: f32 = WINDOW_SIZE as f32 / -2.0;
+        const UPPER: f32 = WINDOW_SIZE as f32 / 2.0;
+        pos.x > LOWER && pos.x < UPPER && pos.y > LOWER && pos.y < UPPER
+    }
     pub fn view(&self, app: &App, frame: Frame) {
         let draw = app.draw();
         draw.background().color(BLACK);
-        for node in &self.world.nodes {
+        draw.rect()
+            .color(rgb(50u8, 50, 50))
+            .xy(self.camera.world_to_view(self.world.size / 2.))
+            .wh(self.world.size * self.camera.zoom);
+        for node in self.world.nodes.iter() {
             // adjust for camera zoom and pos
             let pos = self.camera.world_to_view(node.pos);
             if !pos.is_finite() {
                 continue;
             }
+            if !self.within_view(pos) {
+                continue;
+            }
             let radius = node.radius * self.camera.zoom;
             draw.ellipse()
-                .color(rgb(150 as u8, 150, 200))
+                .color(rgb(150u8, 150, 200))
                 .xy(pos)
                 .radius(radius);
         }
-        for edge in &self.world.edges {
+        for bone in self.world.bones.iter() {
             // adjust for camera zoom and pos
-            let pos_1 = self.camera.world_to_view(self.world.nodes[edge.node_1].pos);
-            let pos_2 = self.camera.world_to_view(self.world.nodes[edge.node_2].pos);
+            let pos_1 = self
+                .camera
+                .world_to_view(self.world.nodes.get(bone.node_1).unwrap().pos);
+            let pos_2 = self
+                .camera
+                .world_to_view(self.world.nodes.get(bone.node_2).unwrap().pos);
             if !pos_1.is_finite() || !pos_1.is_finite() {
+                continue;
+            }
+            if !self.within_view(pos_1) && !self.within_view(pos_2) {
                 continue;
             }
 
             let radius = 3.0 * self.camera.zoom;
             draw.line()
-                .color(rgb(150 as u8, 200, 150))
+                .color(rgb(150u8, 200, 150))
                 .start(pos_1)
                 .end(pos_2)
                 .weight(radius);
         }
-        for muscle in &self.world.muscles {
+        for muscle in self.world.muscles.iter() {
             // adjust for camera zoom and pos
             let pos_1 = self
                 .camera
-                .world_to_view(self.world.nodes[muscle.node_1].pos);
+                .world_to_view(self.world.nodes.get(muscle.node_1).unwrap().pos);
             let pos_2 = self
                 .camera
-                .world_to_view(self.world.nodes[muscle.node_2].pos);
+                .world_to_view(self.world.nodes.get(muscle.node_2).unwrap().pos);
             if !pos_1.is_finite() || !pos_1.is_finite() {
+                continue;
+            }
+            if !self.within_view(pos_1) && !self.within_view(pos_2) {
                 continue;
             }
 
             let radius = 3.0 * self.camera.zoom;
             draw.line()
-                .color(rgb(200 as u8, 150, 150))
+                .color(rgb(200u8, 150, 150))
                 .start(pos_1)
                 .end(pos_2)
                 .weight(radius);
         }
         draw.to_frame(app, &frame).unwrap();
     }
-    pub fn update(&mut self, _app: &App, update: Update) {
-        self.world.update(update.since_last, update.since_start);
+    pub fn update(&mut self, _app: &App, _update: Update) {
+        if self.input_state.skip_toggled {
+            self.world.skip(100);
+        } else {
+            self.world.update();
+        }
     }
     pub fn event(&mut self, _app: &App, event: Event) {
         const CAMERA_MOVE: f32 = 2.0;
@@ -177,7 +209,7 @@ impl Model {
                 }
             }
             // move node towards mouse pos
-            let node = &mut self.world.nodes[nearest_node];
+            let node = &mut self.world.nodes.get_mut(nearest_node).unwrap();
             let dist = node.pos.distance(mouse_pos);
             if dist > 0.0 {
                 node.pos = mouse_pos;
