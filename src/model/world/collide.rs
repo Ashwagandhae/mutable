@@ -30,11 +30,11 @@ impl Collider {
         for cell in &mut self.grid {
             cell.clear();
         }
-        for (i, node) in nodes.iter().enumerate() {
+        for (i, node) in nodes.iter_with_indices() {
             let y = ((node.pos.y / self.world_size.y * self.grid_size.1 as f32) as usize)
-                .clamp(0, self.grid.len() - 1);
+                .clamp(0, self.grid_size.1 - 1);
             let x = ((node.pos.x / self.world_size.x * self.grid_size.0 as f32) as usize)
-                .clamp(0, self.grid.len() - 1);
+                .clamp(0, self.grid_size.0 - 1);
             self.grid[y * self.grid_size.1 + x].push(i);
         }
     }

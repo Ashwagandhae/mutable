@@ -1,5 +1,6 @@
 use nannou::prelude::*;
 mod world;
+use world::node::NodeKind;
 use world::World;
 
 pub const WINDOW_SIZE: u32 = 800;
@@ -114,10 +115,12 @@ impl Model {
                 continue;
             }
             let radius = node.radius * self.camera.zoom;
-            draw.ellipse()
-                .color(rgb(150u8, 150, 200))
-                .xy(pos)
-                .radius(radius);
+            let energy_mult = node.energy.max(0.) * 0.1;
+            let color = match node.kind {
+                NodeKind::Leaf => rgb(0.5 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
+                NodeKind::Body => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.5 + energy_mult),
+            };
+            draw.ellipse().color(color).xy(pos).radius(radius);
         }
         for bone in self.world.bones.iter() {
             // adjust for camera zoom and pos
@@ -199,17 +202,17 @@ impl Model {
             // move node towards mouse pos
             let mouse_pos = self.camera.view_to_world(self.input_state.mouse_pos);
             // get nearest node
-            let mut nearest_node = 0;
+            let mut nearest_node = None;
             let mut nearest_dist = 100000000.0;
-            for (i, node) in self.world.nodes.iter().enumerate() {
+            for node in self.world.nodes.iter_mut() {
                 let dist = node.pos.distance(mouse_pos);
                 if dist < nearest_dist {
                     nearest_dist = dist;
-                    nearest_node = i;
+                    nearest_node = Some(node);
                 }
             }
             // move node towards mouse pos
-            let node = &mut self.world.nodes.get_mut(nearest_node).unwrap();
+            let Some(node) = nearest_node else {return};
             let dist = node.pos.distance(mouse_pos);
             if dist > 0.0 {
                 node.pos = mouse_pos;

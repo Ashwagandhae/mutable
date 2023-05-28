@@ -7,9 +7,10 @@ pub struct Muscle {
     pub joint_node: usize,
     pub node_1: usize,
     pub node_2: usize,
+
     pub angle: Angle,
-    pub angle_fn: fn(u64) -> f32,
     pub strength: f32,
+    pub dead: bool,
 }
 impl Muscle {
     pub fn new(
@@ -17,7 +18,6 @@ impl Muscle {
         node_1: usize,
         node_2: usize,
         angle: Angle,
-        angle_fn: fn(u64) -> f32,
         strength: f32,
     ) -> Muscle {
         Muscle {
@@ -25,24 +25,27 @@ impl Muscle {
             node_1,
             node_2,
             angle,
-            angle_fn,
             strength,
+            dead: false,
         }
     }
-    pub fn update(&mut self, nodes: &mut Collection<Node>, tick: u64) {
-        let joint_node = nodes
-            .get(self.joint_node)
-            .expect("joint node not found for muscle");
-        let node_1 = nodes.get(self.node_1).expect("node 1 not found for muscle");
-        let node_2 = nodes.get(self.node_2).expect("node 2 not found for muscle");
+    pub fn update(&mut self, nodes: &mut Collection<Node>, _tick: u64) {
+        // let joint_node = nodes
+        //     .get(self.joint_node)
+        // let node_1 = nodes.get(self.node_1);
+        // let node_2 = nodes.get(self.node_2);
+        let (Some(joint_node), Some(node_1), Some(node_2)) =
+            (nodes.get(self.joint_node), nodes.get(self.node_1), nodes.get(self.node_2)) else {
+                self.dead = true;
+                return;
+            };
 
         // update angle by slow sin wave
-        let real_angle = (self.angle_fn)(tick) + self.angle.0;
 
         let angle_diff = Angle::from_pi_pi_range(
             (node_1.pos - joint_node.pos).angle_between(node_2.pos - joint_node.pos),
         )
-        .0 - real_angle;
+        .0 - self.angle.0;
 
         // move towards each other
         let accel_change_1 =

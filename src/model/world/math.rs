@@ -1,4 +1,4 @@
-use nannou::prelude::PI;
+use nannou::prelude::{Vec2, PI};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Angle(pub f32);
@@ -11,6 +11,9 @@ impl Angle {
         } else {
             Angle(angle)
         }
+    }
+    pub fn as_vec2(&self) -> nannou::prelude::Vec2 {
+        Vec2::new(self.0.cos(), self.0.sin())
     }
 }
 

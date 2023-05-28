@@ -11,28 +11,37 @@ impl<Item> Collection<Item> {
             removed: Vec::new(),
         }
     }
-    pub fn push(&mut self, item: Item) {
-        if let Some(index) = self.removed.pop() {
-            self.items[index] = Some(item);
+    pub fn push(&mut self, item: Item) -> usize {
+        if let Some(id) = self.removed.pop() {
+            self.items[id] = Some(item);
+            id
         } else {
             self.items.push(Some(item));
+            self.items.len() - 1
         }
     }
-    pub fn remove(&mut self, index: usize) {
-        self.items[index] = None;
-        self.removed.push(index);
+    pub fn remove(&mut self, id: usize) {
+        self.items[id] = None;
+        self.removed.push(id);
     }
-    pub fn get(&self, index: usize) -> Option<&Item> {
-        self.items[index].as_ref()
+    pub fn get(&self, id: usize) -> Option<&Item> {
+        self.items[id].as_ref()
     }
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut Item> {
-        self.items[index].as_mut()
+    pub fn get_mut(&mut self, id: usize) -> Option<&mut Item> {
+        self.items[id].as_mut()
     }
-    pub fn iter(&self) -> impl Iterator<Item = &Item> {
+    pub fn iter(&self) -> impl Iterator<Item = &Item> + DoubleEndedIterator {
         self.items.iter().filter_map(|item| item.as_ref())
     }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> {
+    // allow reveres
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> + DoubleEndedIterator {
         self.items.iter_mut().filter_map(|item| item.as_mut())
+    }
+    pub fn iter_with_indices(&self) -> impl Iterator<Item = (usize, &Item)> {
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| item.as_ref().map(|item| (i, item)))
     }
     pub fn len(&self) -> usize {
         self.items.len() - self.removed.len()
@@ -51,5 +60,18 @@ impl<Item> Collection<Item> {
     }
     pub fn get_vec(&self) -> &Vec<Option<Item>> {
         &self.items
+    }
+    pub fn remove_when<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&Item) -> bool,
+    {
+        for (i, item) in self.items.iter_mut().enumerate() {
+            if let Some(inner) = item {
+                if f(inner) {
+                    *item = None;
+                    self.removed.push(i);
+                }
+            }
+        }
     }
 }
