@@ -1,12 +1,12 @@
-use super::collection::Collection;
+use super::collection::{Collection, GenId};
 use super::math::Angle;
 use super::node::Node;
 
 #[derive(Debug, Clone)]
 pub struct Muscle {
-    pub joint_node: usize,
-    pub node_1: usize,
-    pub node_2: usize,
+    pub joint_node: GenId,
+    pub node_1: GenId,
+    pub node_2: GenId,
 
     pub angle: Angle,
     pub strength: f32,
@@ -14,9 +14,9 @@ pub struct Muscle {
 }
 impl Muscle {
     pub fn new(
-        joint_node: usize,
-        node_1: usize,
-        node_2: usize,
+        joint_node: GenId,
+        node_1: GenId,
+        node_2: GenId,
         angle: Angle,
         strength: f32,
     ) -> Muscle {
@@ -30,17 +30,11 @@ impl Muscle {
         }
     }
     pub fn update(&mut self, nodes: &mut Collection<Node>, _tick: u64) {
-        // let joint_node = nodes
-        //     .get(self.joint_node)
-        // let node_1 = nodes.get(self.node_1);
-        // let node_2 = nodes.get(self.node_2);
         let (Some(joint_node), Some(node_1), Some(node_2)) =
             (nodes.get(self.joint_node), nodes.get(self.node_1), nodes.get(self.node_2)) else {
                 self.dead = true;
                 return;
             };
-
-        // update angle by slow sin wave
 
         let angle_diff = Angle::from_pi_pi_range(
             (node_1.pos - joint_node.pos).angle_between(node_2.pos - joint_node.pos),
@@ -55,8 +49,8 @@ impl Muscle {
 
         // apply
         let node_1 = nodes.get_mut(self.node_1).unwrap();
-        node_1.accel += accel_change_1;
+        node_1.accel(accel_change_1);
         let node_2 = nodes.get_mut(self.node_2).unwrap();
-        node_2.accel += accel_change_2;
+        node_2.accel(accel_change_2);
     }
 }

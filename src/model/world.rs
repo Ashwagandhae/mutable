@@ -37,10 +37,9 @@ impl World {
         let mut bones = Collection::new();
         let mut muscles = Collection::new();
         let mut organisms = Collection::new();
+        let size = vec2(2000., 2000.);
 
-        random_organisms(&mut nodes, &mut bones, &mut muscles, &mut organisms);
-
-        let size = vec2(10000., 10000.);
+        random_organisms(&mut nodes, &mut bones, &mut muscles, &mut organisms, size);
 
         World {
             nodes,
@@ -58,64 +57,72 @@ impl World {
         }
     }
     pub fn update(&mut self) {
-        // update nodes
-        for node in self.nodes.iter_mut() {
-            node.update();
+        self.update_bones();
+
+        self.update_muscles();
+
+        self.update_nodes();
+
+        if self.tick % 64 == 0 {
+            self.grow_organisms();
         }
-        for node in self.nodes.iter_mut() {
-            node.update();
-        }
-        self.nodes.remove_when(|node| node.dead);
-        // update bones
+
+        self.tick += 1;
+    }
+    fn update_bones(&mut self) {
         for bone in self.bones.iter_mut() {
             bone.update(&mut self.nodes);
         }
-        self.bones.remove_when(|bone| bone.dead);
-
-        // update muscles
+        self.bones.retain(|bone| !bone.dead);
+    }
+    fn update_muscles(&mut self) {
         for muscle in self.muscles.iter_mut() {
             muscle.update(&mut self.nodes, self.tick);
         }
-        self.muscles.remove_when(|muscle| muscle.dead);
+        self.muscles.retain(|muscle| !muscle.dead);
+    }
+    fn update_nodes(&mut self) {
+        for node in self.nodes.iter_mut() {
+            node.update();
+        }
+        // kill nodes if no parent
+        for i in 0..self.nodes.full_len() {
+            let Some(node) = self.nodes.get_index(i) else {continue};
+            if let Some(parent) = node.parent_id {
+                if self.nodes.get(parent).is_none() {
+                    self.nodes.get_index_mut(i).unwrap().dead = true;
+                }
+            }
+        }
+
+        self.nodes.retain(|node| !node.dead);
 
         // collide nodes with collider
-        self.collider.update(&self.nodes);
-        for (i, j) in self.collider.collide() {
-            collide_nodes(&mut self.nodes, i, j);
+        self.collider.par_collide(&mut self.nodes, collide_pair);
+        self.nodes.retain(|node| node.cramming < 6);
+        for node in self.nodes.iter_mut() {
+            node.cramming = 0;
         }
 
         // keep nodes in bounds
         for node in self.nodes.iter_mut() {
-            if node.pos.x < 0.0 {
-                node.pos.x = 0.0;
-            }
-            if node.pos.x > self.size.x {
-                node.pos.x = self.size.x;
-            }
-            if node.pos.y < 0.0 {
-                node.pos.y = 0.0;
-            }
-            if node.pos.y > self.size.y {
-                node.pos.y = self.size.y;
-            }
+            node.pos.x = node.pos.x.clamp(0.0, self.size.x);
+            node.pos.y = node.pos.y.clamp(0.0, self.size.y);
         }
+    }
 
-        // grow nodes sometimes
-        if self.tick % 64 == 0 {
-            let mut new_organisms = Vec::new();
-            for organism in self.organisms.iter_mut() {
-                organism.grow(&mut self.nodes, &mut self.bones, &mut self.muscles);
-                new_organisms.extend(organism.new_organisms.drain(..));
-            }
-            self.organisms.extend(&mut new_organisms);
+    fn grow_organisms(&mut self) {
+        let mut new_organisms = Vec::new();
+        for organism in self.organisms.iter_mut() {
+            organism.grow(&mut self.nodes, &mut self.bones, &mut self.muscles);
+            new_organisms.extend(organism.new_organisms.drain(..));
         }
-        self.organisms.remove_when(|organism| organism.dead);
-
-        self.tick += 1;
+        self.organisms.extend(&mut new_organisms);
+        self.organisms.retain(|organism| !organism.dead);
     }
 }
 
-// fn collide_nodes(nodes: &mut Collection<Node>, i: usize, j: usize) {
+// fn collide_pair(nodes: &mut Collection<Node>, i: usize, j: usize) {
 //     let node_1 = nodes.get(i).unwrap();
 //     let node_2 = nodes.get(j).unwrap();
 //     let dist = node_1.pos.distance(node_2.pos);
@@ -137,7 +144,7 @@ impl World {
 //     }
 // }
 
-// fn collide_nodes(nodes: &mut Collection<Node>, i: usize, j: usize) {
+// fn collide_pair(nodes: &mut Collection<Node>, i: usize, j: usize) {
 //     let node_1 = nodes.get(i).unwrap();
 //     let node_2 = nodes.get(j).unwrap();
 //     let dist = node_1.pos.distance(node_2.pos);
@@ -168,21 +175,17 @@ impl World {
 //         nodes.get_mut(j).unwrap().vel += vel_2;
 //     }
 // }
-fn collide_nodes(nodes: &mut Collection<Node>, i: usize, j: usize) {
-    let node_1 = nodes.get(i).unwrap();
-    let node_2 = nodes.get(j).unwrap();
+fn collide_pair(node_1: &mut Node, node_2: &mut Node) {
     let dist = node_1.pos.distance(node_2.pos);
     let min_dist = node_1.radius + node_2.radius;
     if dist < min_dist {
         // move them away from each other
         let diff = node_1.pos - node_2.pos;
-        let pos_change = diff.normalize() * (min_dist - dist) / 2.0;
+        let pos_change = diff.normalize_or_zero() * (min_dist - dist) / 2.0;
 
-        let node_1 = nodes.get_mut(i).unwrap();
         node_1.pos += pos_change;
-        node_1.pressure += 1.;
-        let node_2 = nodes.get_mut(j).unwrap();
+        node_1.cramming = node_1.cramming.saturating_add(1);
         node_2.pos -= pos_change;
-        node_2.pressure += 1.;
+        node_2.cramming = node_2.cramming.saturating_add(1);
     }
 }

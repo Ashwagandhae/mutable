@@ -11,11 +11,12 @@ pub fn random_organisms(
     _bones: &mut Collection<Bone>,
     _muscles: &mut Collection<Muscle>,
     organisms: &mut Collection<Organism>,
+    size: Vec2,
 ) {
-    for _ in 0..100 {
+    for _ in 0..800 {
         let genome = Genome::random();
         let energy = 10.;
-        let pos = vec2(random_range(0., 1000.), random_range(0., 1000.));
+        let pos = vec2(random_range(0., size.x), random_range(0., size.y));
         organisms.push(Organism::build(pos, genome, energy, nodes));
     }
 }

@@ -1,4 +1,5 @@
 use super::bone::Bone;
+use super::collection::GenId;
 use super::math::Angle;
 use super::muscle::Muscle;
 use super::node::{Node, NodeKind};
@@ -11,7 +12,7 @@ pub struct BoneBuild {
 }
 // TODO make everything 1
 impl BoneBuild {
-    pub fn build(&self, node_1: usize, node_2: usize) -> Bone {
+    pub fn build(&self, node_1: GenId, node_2: GenId) -> Bone {
         Bone::new(node_1, node_2, self.length)
     }
     pub fn energy_cost(&self) -> f32 {
@@ -30,7 +31,7 @@ impl NodeBuild {
         pos: Point2,
         gene_index: usize,
         energy: f32,
-        parent_id: Option<usize>,
+        parent_id: Option<GenId>,
     ) -> Node {
         Node::new(
             pos,
@@ -52,7 +53,7 @@ pub struct MuscleBuild {
     pub strength: f32,
 }
 impl MuscleBuild {
-    pub fn build(&self, node_1: usize, node_2: usize, joint_node: usize) -> Muscle {
+    pub fn build(&self, node_1: GenId, node_2: GenId, joint_node: GenId) -> Muscle {
         Muscle::new(joint_node, node_1, node_2, self.angle, self.strength)
     }
     pub fn energy_cost(&self) -> f32 {

@@ -108,9 +108,7 @@ impl Model {
         for node in self.world.nodes.iter() {
             // adjust for camera zoom and pos
             let pos = self.camera.world_to_view(node.pos);
-            if !pos.is_finite() {
-                continue;
-            }
+
             if !self.within_view(pos) {
                 continue;
             }
@@ -123,13 +121,10 @@ impl Model {
             draw.ellipse().color(color).xy(pos).radius(radius);
         }
         for bone in self.world.bones.iter() {
-            // adjust for camera zoom and pos
-            let pos_1 = self
-                .camera
-                .world_to_view(self.world.nodes.get(bone.node_1).unwrap().pos);
-            let pos_2 = self
-                .camera
-                .world_to_view(self.world.nodes.get(bone.node_2).unwrap().pos);
+            let Some(node_1) = self.world.nodes.get(bone.node_1) else {continue};
+            let Some(node_2) = self.world.nodes.get(bone.node_2) else {continue};
+            let pos_1 = self.camera.world_to_view(node_1.pos);
+            let pos_2 = self.camera.world_to_view(node_2.pos);
             if !pos_1.is_finite() || !pos_1.is_finite() {
                 continue;
             }
@@ -145,13 +140,10 @@ impl Model {
                 .weight(radius);
         }
         for muscle in self.world.muscles.iter() {
-            // adjust for camera zoom and pos
-            let pos_1 = self
-                .camera
-                .world_to_view(self.world.nodes.get(muscle.node_1).unwrap().pos);
-            let pos_2 = self
-                .camera
-                .world_to_view(self.world.nodes.get(muscle.node_2).unwrap().pos);
+            let Some(node_1) = self.world.nodes.get(muscle.node_1) else {continue};
+            let Some(node_2) = self.world.nodes.get(muscle.node_2) else {continue};
+            let pos_1 = self.camera.world_to_view(node_1.pos);
+            let pos_2 = self.camera.world_to_view(node_2.pos);
             if !pos_1.is_finite() || !pos_1.is_finite() {
                 continue;
             }
@@ -166,11 +158,12 @@ impl Model {
                 .end(pos_2)
                 .weight(radius);
         }
+        draw_gui(&self, app, draw.clone());
         draw.to_frame(app, &frame).unwrap();
     }
     pub fn update(&mut self, _app: &App, _update: Update) {
         if self.input_state.skip_toggled {
-            self.world.skip(100);
+            self.world.skip(256);
         } else {
             self.world.update();
         }
@@ -218,5 +211,35 @@ impl Model {
                 node.pos = mouse_pos;
             }
         }
+    }
+}
+
+fn draw_gui(model: &Model, app: &App, draw: Draw) {
+    let mut y = WINDOW_SIZE as f32 / 2.0 - 10.;
+    let mut add_text = |text: &str| {
+        draw.text(text)
+            .color(WHITE)
+            .font_size(16)
+            .x_y(WINDOW_SIZE as f32 / -2.0 + 50.0, y)
+            .width(100.0)
+            .left_justify();
+        y -= 20.0;
+    };
+    let texts = [
+        &format!("FPS: {}", app.fps() as u32),
+        &format!("Nodes: {}", model.world.nodes.len()),
+        &format!("Bones: {}", model.world.bones.len()),
+        &format!("Muscles: {}", model.world.muscles.len()),
+    ];
+    // draw rect behind
+    draw.rect()
+        .color(BLACK)
+        .w_h(100.0, 20.0 * texts.len() as f32)
+        .x_y(
+            WINDOW_SIZE as f32 / -2.0 + 50.0,
+            WINDOW_SIZE as f32 / 2.0 - 10.0 * texts.len() as f32,
+        );
+    for text in texts.iter() {
+        add_text(text);
     }
 }

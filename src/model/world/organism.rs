@@ -2,6 +2,7 @@ use nannou::prelude::*;
 
 use super::bone::Bone;
 use super::collection::Collection;
+use super::collection::GenId;
 use super::gene::Gene;
 use super::gene::Genome;
 use super::math::Angle;
@@ -11,9 +12,9 @@ use super::node::Node;
 #[derive(Debug, Clone)]
 pub struct Organism {
     genome: Genome,
-    node_ids: Vec<usize>,
-    bone_ids: Vec<usize>,
-    muscle_ids: Vec<usize>,
+    node_ids: Vec<GenId>,
+    bone_ids: Vec<GenId>,
+    muscle_ids: Vec<GenId>,
     pub new_organisms: Vec<Organism>,
     pub dead: bool,
 }
@@ -57,6 +58,7 @@ impl Organism {
             self.dead = true;
         }
     }
+    #[inline(never)]
     pub fn grow(
         &mut self,
         nodes: &mut Collection<Node>,
