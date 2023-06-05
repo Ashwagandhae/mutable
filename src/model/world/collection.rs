@@ -12,6 +12,7 @@ pub struct Collection<Item> {
     gens: Vec<usize>,
 }
 
+#[allow(dead_code)]
 impl<Item> Collection<Item> {
     pub fn new() -> Collection<Item> {
         Collection {
@@ -66,22 +67,28 @@ impl<Item> Collection<Item> {
         id_2: GenId,
     ) -> (Option<&mut Item>, Option<&mut Item>) {
         // make sure ids are not the same
-        if id_1 == id_2 {
+        if id_1.index == id_2.index {
             return (None, None);
         }
         // put them in right order
-        let (id_1, id_2) = if id_1.index < id_2.index {
+        let (left_id, right_id) = if id_1.index < id_2.index {
             (id_1, id_2)
         } else {
             (id_2, id_1)
         };
-        let gen_1_valid = self.check_gen(id_1);
-        let gen_2_valid = self.check_gen(id_2);
-        let (left, right) = self.items.split_at_mut(id_2.index);
-        (
-            left[id_1.index].as_mut().filter(|_| gen_1_valid),
-            right[0].as_mut().filter(|_| gen_2_valid),
-        )
+        let left_gen_valid = self.check_gen(left_id);
+        let right_gen_valid = self.check_gen(right_id);
+        let (left, right) = self.items.split_at_mut(right_id.index);
+        let ret = (
+            left[left_id.index].as_mut().filter(|_| left_gen_valid),
+            right[0].as_mut().filter(|_| right_gen_valid),
+        );
+        // put them back in right order
+        if id_1.index < id_2.index {
+            ret
+        } else {
+            (ret.1, ret.0)
+        }
     }
     pub fn get_index(&self, i: usize) -> Option<&Item> {
         self.items[i].as_ref()
@@ -89,12 +96,32 @@ impl<Item> Collection<Item> {
     pub fn get_index_mut(&mut self, i: usize) -> Option<&mut Item> {
         self.items[i].as_mut()
     }
+    pub fn get_2_index_mut(
+        &mut self,
+        i_1: usize,
+        i_2: usize,
+    ) -> (Option<&mut Item>, Option<&mut Item>) {
+        // make sure ids are not the same
+        if i_1 == i_2 {
+            return (None, None);
+        }
+        // put them in right order
+        let (i_1, i_2) = if i_1 < i_2 { (i_1, i_2) } else { (i_2, i_1) };
+        let (left, right) = self.items.split_at_mut(i_2);
+        (left[i_1].as_mut(), right[0].as_mut())
+    }
     pub fn iter(&self) -> impl Iterator<Item = &Item> + DoubleEndedIterator {
         self.items.iter().filter_map(|item| item.as_ref())
     }
     // allow reveres
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> + DoubleEndedIterator {
         self.items.iter_mut().filter_map(|item| item.as_mut())
+    }
+    pub fn iter_with_indices(&self) -> impl Iterator<Item = (usize, &Item)> {
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(i, item)| item.as_ref().map(|item| (i, item)))
     }
     pub fn iter_with_ids(&self) -> impl Iterator<Item = (GenId, &Item)> {
         self.items.iter().enumerate().filter_map(|(i, item)| {

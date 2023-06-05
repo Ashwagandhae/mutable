@@ -10,7 +10,7 @@ pub struct Muscle {
 
     pub angle: Angle,
     pub strength: f32,
-    pub dead: bool,
+    pub delete: bool,
 }
 impl Muscle {
     pub fn new(
@@ -26,15 +26,19 @@ impl Muscle {
             node_2,
             angle,
             strength,
-            dead: false,
+            delete: false,
         }
     }
     pub fn update(&mut self, nodes: &mut Collection<Node>, _tick: u64) {
         let (Some(joint_node), Some(node_1), Some(node_2)) =
             (nodes.get(self.joint_node), nodes.get(self.node_1), nodes.get(self.node_2)) else {
-                self.dead = true;
+                self.delete = true;
                 return;
             };
+        // dont move if joint node is dead
+        if !joint_node.is_alive() {
+            return;
+        }
 
         let angle_diff = Angle::from_pi_pi_range(
             (node_1.pos - joint_node.pos).angle_between(node_2.pos - joint_node.pos),

@@ -12,7 +12,7 @@ impl Angle {
             Angle(angle)
         }
     }
-    pub fn as_vec2(&self) -> nannou::prelude::Vec2 {
+    pub fn to_vec2(&self) -> nannou::prelude::Vec2 {
         Vec2::new(self.0.cos(), self.0.sin())
     }
 }

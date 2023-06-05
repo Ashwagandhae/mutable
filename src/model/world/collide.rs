@@ -1,11 +1,11 @@
-use super::collection::{Collection, GenId};
+use super::collection::Collection;
 use super::node::Node;
 use super::MAX_NODE_RADIUS;
 use itertools::iproduct;
 use nannou::prelude::*;
 #[derive(Debug, Clone)]
 pub struct Collider {
-    pub grid: Vec<Vec<GenId>>,
+    pub grid: Vec<Vec<usize>>,
     pub world_size: Vec2,
     pub grid_size: (usize, usize),
 }
@@ -29,12 +29,12 @@ impl Collider {
         for cell in &mut self.grid {
             cell.clear();
         }
-        for (id, node) in nodes.iter_with_ids() {
+        for (i, node) in nodes.iter_with_indices() {
             let y = ((node.pos.y / self.world_size.y * self.grid_size.1 as f32) as usize)
                 .clamp(0, self.grid_size.1 - 1);
             let x = ((node.pos.x / self.world_size.x * self.grid_size.0 as f32) as usize)
                 .clamp(0, self.grid_size.0 - 1);
-            self.grid[y * self.grid_size.1 + x].push(id);
+            self.grid[y * self.grid_size.1 + x].push(i);
         }
     }
     pub fn collide(
@@ -64,7 +64,7 @@ impl Collider {
                 }
                 let other_cell = &self.grid[y as usize * self.grid_size.1 + x as usize];
                 for (id_1, id_2) in iproduct!(current_cell.iter(), other_cell.iter()) {
-                    let (Some(node_1), Some(node_2)) = nodes.get_2_mut(*id_1, *id_2) else {unreachable!()};
+                    let (Some(node_1), Some(node_2)) = nodes.get_2_index_mut(*id_1, *id_2) else {unreachable!()};
                     collide_fn(node_1, node_2);
                 }
             }
@@ -72,7 +72,7 @@ impl Collider {
             for i in 0..current_cell.len() {
                 for j in i + 1..current_cell.len() {
                     let (id_1, id_2) = (current_cell[i], current_cell[j]);
-                    let (Some(node_1), Some(node_2)) = nodes.get_2_mut(id_1, id_2) else {unreachable!()};
+                    let (Some(node_1), Some(node_2)) = nodes.get_2_index_mut(id_1, id_2) else {unreachable!()};
                     collide_fn(node_1, node_2);
                 }
             }
@@ -93,7 +93,7 @@ impl Collider {
         let odd_rows_iter = (1..self.grid_size.1).into_par_iter().step_by(2);
         let collide = |y| {
             for x in 0..self.grid_size.0 {
-                let current_cell: &Vec<GenId> = &self.grid[y * self.grid_size.1 + x];
+                let current_cell: &Vec<usize> = &self.grid[y * self.grid_size.1 + x];
                 for (dx, dy) in [(1, 0), (-1, 1), (0, 1), (1, 1)] {
                     let y = y as i32 + dy;
                     let x = x as i32 + dx;
@@ -106,8 +106,8 @@ impl Collider {
                     }
                     let other_cell = &self.grid[y as usize * self.grid_size.1 + x as usize];
                     for (id_1, id_2) in iproduct!(current_cell.iter(), other_cell.iter()) {
-                        let Some(node_1) = (unsafe { nodes_slice.get_mut(id_1.index) }) else {unreachable!()};
-                        let Some(node_2) = (unsafe { nodes_slice.get_mut(id_2.index) }) else {unreachable!()};
+                        let Some(node_1) = (unsafe { nodes_slice.get_mut(*id_1) }) else {unreachable!()};
+                        let Some(node_2) = (unsafe { nodes_slice.get_mut(*id_2) }) else {unreachable!()};
                         collide_fn(node_1, node_2);
                     }
                 }
@@ -115,8 +115,8 @@ impl Collider {
                 for i in 0..current_cell.len() {
                     for j in i + 1..current_cell.len() {
                         let (id_1, id_2) = (current_cell[i], current_cell[j]);
-                        let Some(node_1) = (unsafe { nodes_slice.get_mut(id_1.index) }) else {unreachable!()};
-                        let Some(node_2) = (unsafe { nodes_slice.get_mut(id_2.index) }) else {unreachable!()};
+                        let Some(node_1) = (unsafe { nodes_slice.get_mut(id_1) }) else {unreachable!()};
+                        let Some(node_2) = (unsafe { nodes_slice.get_mut(id_2) }) else {unreachable!()};
                         collide_fn(node_1, node_2);
                     }
                 }

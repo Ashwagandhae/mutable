@@ -2,7 +2,7 @@ use nannou::prelude::Vec2;
 
 use super::{
     collection::{Collection, GenId},
-    node::Node,
+    node::{LifeState, Node},
 };
 #[derive(Debug, Clone)]
 pub struct Bone {
@@ -10,7 +10,7 @@ pub struct Bone {
     pub node_2: GenId,
     pub len: f32,
 
-    pub dead: bool,
+    pub delete: bool,
 }
 impl Bone {
     pub fn new(node_1: GenId, node_2: GenId, len: f32) -> Bone {
@@ -18,12 +18,12 @@ impl Bone {
             node_1,
             node_2,
             len,
-            dead: false,
+            delete: false,
         }
     }
     pub fn update(&mut self, nodes: &mut Collection<Node>) {
         let (Some(node_1), Some(node_2)) = (nodes.get(self.node_1), nodes.get(self.node_2)) else {
-            self.dead = true;
+            self.delete = true;
             return;
         };
 
@@ -41,22 +41,36 @@ impl Bone {
         let stroke_amp = vel.dot(facing);
         let friction = -facing * stroke_amp * 0.5;
 
-        // transfer energy between nodes
-        let energy_ratio = node_1.energy / node_2.energy;
-        let energy_weight_ratio = node_1.energy_weight / node_2.energy_weight;
-        let energy_change = if energy_ratio < energy_weight_ratio {
-            0.1
-        } else {
-            -0.1
-        };
-
-        let node_1 = nodes.get_mut(self.node_1).unwrap();
+        let (Some(node_1), Some(node_2)) = nodes.get_2_mut(self.node_1, self.node_2) else {unreachable!()};
         node_1.pos += pos_change;
         node_1.accel(friction);
-        node_1.energy += energy_change;
-        let node_2 = nodes.get_mut(self.node_2).unwrap();
         node_2.pos -= pos_change;
         node_2.accel(friction);
-        node_2.energy -= energy_change;
+
+        match (&mut node_1.life_state, &mut node_2.life_state) {
+            (
+                LifeState::Alive {
+                    energy: ref mut energy_1,
+                    energy_weight: ref mut energy_weight_1,
+                    ..
+                },
+                LifeState::Alive {
+                    energy: ref mut energy_2,
+                    energy_weight: ref mut energy_weight_2,
+                    ..
+                },
+            ) => {
+                let energy_ratio = *energy_1 / *energy_2;
+                let energy_weight_ratio = *energy_weight_1 / *energy_weight_2;
+                let energy_change = if energy_ratio < energy_weight_ratio {
+                    0.1
+                } else {
+                    -0.1
+                };
+                *energy_1 += energy_change;
+                *energy_2 -= energy_change;
+            }
+            _ => (),
+        }
     }
 }

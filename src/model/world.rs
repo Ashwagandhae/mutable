@@ -1,7 +1,8 @@
 use nannou::prelude::*;
 
 mod bone;
-mod collection;
+mod chunks;
+pub mod collection;
 mod collide;
 mod gene;
 mod init;
@@ -11,12 +12,16 @@ pub mod node;
 mod organism;
 
 use bone::Bone;
+use chunks::Chunks;
 use collection::Collection;
 use collide::Collider;
 use init::random_organisms;
 use muscle::Muscle;
 use node::Node;
 use organism::Organism;
+
+use math::Angle;
+use node::{LifeState, NodeKind};
 
 pub const MAX_NODE_RADIUS: f32 = 10.0;
 
@@ -26,6 +31,7 @@ pub struct World {
     pub bones: Collection<Bone>,
     pub muscles: Collection<Muscle>,
     pub organisms: Collection<Organism>,
+    pub chunks: Chunks,
     pub size: Vec2,
     pub collider: Collider,
     pub tick: u64,
@@ -38,6 +44,7 @@ impl World {
         let mut muscles = Collection::new();
         let mut organisms = Collection::new();
         let size = vec2(2000., 2000.);
+        let chunks = Chunks::new(size, 40.0);
 
         random_organisms(&mut nodes, &mut bones, &mut muscles, &mut organisms, size);
 
@@ -47,6 +54,7 @@ impl World {
             muscles,
             organisms,
             size,
+            chunks,
             collider: Collider::new(size),
             tick: 0,
         }
@@ -73,34 +81,77 @@ impl World {
         for bone in self.bones.iter_mut() {
             bone.update(&mut self.nodes);
         }
-        self.bones.retain(|bone| !bone.dead);
+        self.bones.retain(|bone| !bone.delete);
     }
     fn update_muscles(&mut self) {
         for muscle in self.muscles.iter_mut() {
             muscle.update(&mut self.nodes, self.tick);
         }
-        self.muscles.retain(|muscle| !muscle.dead);
+        self.muscles.retain(|muscle| !muscle.delete);
     }
     fn update_nodes(&mut self) {
         for node in self.nodes.iter_mut() {
-            node.update();
+            node.update(self.chunks.get(node.pos));
         }
         // kill nodes if no parent
         for i in 0..self.nodes.full_len() {
-            let Some(node) = self.nodes.get_index(i) else {continue};
-            if let Some(parent) = node.parent_id {
-                if self.nodes.get(parent).is_none() {
-                    self.nodes.get_index_mut(i).unwrap().dead = true;
-                }
+            let Some(Node {
+                life_state:
+                    LifeState::Alive {
+                        parent_id: Some(parent_id),
+                        ..
+                    },
+                ..
+            }) = self.nodes.get_index(i) else {continue};
+            let parent_dead = match self.nodes.get(*parent_id) {
+                Some(node) => !node.is_alive(),
+                None => true,
+            };
+            if parent_dead {
+                self.nodes.get_index_mut(i).unwrap().die();
             }
         }
 
-        self.nodes.retain(|node| !node.dead);
+        // splat nodes if they decay
+        for i in 0..self.nodes.full_len() {
+            let Some(node) = self.nodes.get_index(i) else {continue};
+            match node.life_state {
+                LifeState::Dead { decay, energy, .. } => {
+                    if decay >= 2048 {
+                        let new_radius = node.radius / 2.0;
+                        if new_radius > 3.0 {
+                            let new_energy = energy * 0.95;
+                            let splat_vec = Angle(random_range(0.0, 2.0 * PI)).to_vec2();
+
+                            let splat_node_1 = Node::new_dead(
+                                node.pos + splat_vec * new_radius,
+                                new_radius,
+                                new_energy,
+                            );
+                            let splat_node_2 = Node::new_dead(
+                                node.pos - splat_vec * new_radius,
+                                new_radius,
+                                new_energy,
+                            );
+                            self.nodes.push(splat_node_1);
+                            self.nodes.push(splat_node_2);
+                        }
+                        self.nodes.get_index_mut(i).unwrap().delete = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        self.nodes.retain(|node| !node.delete);
 
         // collide nodes with collider
         self.collider.par_collide(&mut self.nodes, collide_pair);
-        self.nodes.retain(|node| node.cramming < 6);
+        // self.nodes.retain(|node| node.cramming < 6); // TODO: revert this
         for node in self.nodes.iter_mut() {
+            if node.cramming > 8 {
+                node.die();
+            }
             node.cramming = 0;
         }
 
@@ -118,7 +169,7 @@ impl World {
             new_organisms.extend(organism.new_organisms.drain(..));
         }
         self.organisms.extend(&mut new_organisms);
-        self.organisms.retain(|organism| !organism.dead);
+        self.organisms.retain(|organism| !organism.delete);
     }
 }
 
@@ -187,5 +238,31 @@ fn collide_pair(node_1: &mut Node, node_2: &mut Node) {
         node_1.cramming = node_1.cramming.saturating_add(1);
         node_2.pos -= pos_change;
         node_2.cramming = node_2.cramming.saturating_add(1);
+
+        collided_pair_eat(node_1, node_2);
+        collided_pair_eat(node_2, node_1);
+    }
+}
+
+fn collided_pair_eat(actor: &mut Node, object: &mut Node) {
+    if actor.delete || object.delete {
+        return;
+    }
+    match &mut actor.life_state {
+        LifeState::Alive {
+            kind,
+            ref mut energy,
+            ..
+        } => match kind {
+            NodeKind::Mouth => {
+                if actor.radius * 0.8 < object.radius {
+                    return;
+                }
+                *energy += object.get_energy();
+                object.delete = true;
+            }
+            _ => {}
+        },
+        LifeState::Dead { .. } => (),
     }
 }

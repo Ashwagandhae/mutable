@@ -1,7 +1,10 @@
 use nannou::prelude::*;
 mod world;
-use world::node::NodeKind;
+use world::collection::GenId;
+use world::node::{Node, NodeKind};
 use world::World;
+
+use self::world::node::LifeState;
 
 pub const WINDOW_SIZE: u32 = 800;
 
@@ -33,6 +36,7 @@ pub struct InputState {
     pub mouse_pos: Point2,
     pub mouse_pressed: bool,
     pub skip_toggled: bool,
+    pub selected_node: Option<GenId>,
 }
 impl InputState {
     pub fn new() -> InputState {
@@ -46,6 +50,7 @@ impl InputState {
             mouse_pos: Point2::new(0.0, 0.0),
             mouse_pressed: false,
             skip_toggled: false,
+            selected_node: None,
         }
     }
     pub fn update(&mut self, event: Event) {
@@ -98,6 +103,24 @@ impl Model {
         const UPPER: f32 = WINDOW_SIZE as f32 / 2.0;
         pos.x > LOWER && pos.x < UPPER && pos.y > LOWER && pos.y < UPPER
     }
+    fn draw_node(&self, draw: &Draw, node: &Node) {
+        let pos = self.camera.world_to_view(node.pos);
+
+        if !self.within_view(pos) {
+            return;
+        }
+        let radius = node.radius * self.camera.zoom;
+        let energy_mult = node.get_energy().max(0.) * 0.025;
+        let color = match &node.life_state {
+            LifeState::Alive { kind, .. } => match kind {
+                NodeKind::Leaf => rgb(0.5 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
+                NodeKind::Storage => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.5 + energy_mult),
+                NodeKind::Mouth => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.7 + energy_mult),
+            },
+            LifeState::Dead { .. } => rgb(0.5, 0.5, 0.5),
+        };
+        draw.ellipse().color(color).xy(pos).radius(radius);
+    }
     pub fn view(&self, app: &App, frame: Frame) {
         let draw = app.draw();
         draw.background().color(BLACK);
@@ -105,20 +128,9 @@ impl Model {
             .color(rgb(50u8, 50, 50))
             .xy(self.camera.world_to_view(self.world.size / 2.))
             .wh(self.world.size * self.camera.zoom);
-        for node in self.world.nodes.iter() {
-            // adjust for camera zoom and pos
-            let pos = self.camera.world_to_view(node.pos);
 
-            if !self.within_view(pos) {
-                continue;
-            }
-            let radius = node.radius * self.camera.zoom;
-            let energy_mult = node.energy.max(0.) * 0.1;
-            let color = match node.kind {
-                NodeKind::Leaf => rgb(0.5 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
-                NodeKind::Body => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.5 + energy_mult),
-            };
-            draw.ellipse().color(color).xy(pos).radius(radius);
+        for node in self.world.nodes.iter() {
+            self.draw_node(&draw, node);
         }
         for bone in self.world.bones.iter() {
             let Some(node_1) = self.world.nodes.get(bone.node_1) else {continue};
@@ -195,21 +207,37 @@ impl Model {
             // move node towards mouse pos
             let mouse_pos = self.camera.view_to_world(self.input_state.mouse_pos);
             // get nearest node
-            let mut nearest_node = None;
-            let mut nearest_dist = 100000000.0;
-            for node in self.world.nodes.iter_mut() {
-                let dist = node.pos.distance(mouse_pos);
-                if dist < nearest_dist {
-                    nearest_dist = dist;
-                    nearest_node = Some(node);
+            let selected_node = self.input_state.selected_node.or_else(|| {
+                let mut nearest_node = None;
+                let mut nearest_dist = 100000000.0;
+                for (id, node) in self.world.nodes.iter_with_ids() {
+                    let dist = node.pos.distance(mouse_pos);
+                    if dist < nearest_dist {
+                        nearest_dist = dist;
+                        nearest_node = Some(id);
+                    }
                 }
-            }
+                nearest_node
+            });
+
             // move node towards mouse pos
-            let Some(node) = nearest_node else {return};
-            let dist = node.pos.distance(mouse_pos);
-            if dist > 0.0 {
-                node.pos = mouse_pos;
+            let Some(id) = selected_node else {return};
+            match &mut self.world.nodes.get_mut(id) {
+                Some(ref mut node) => {
+                    let dist = node.pos.distance(mouse_pos);
+                    if dist > 0.0 {
+                        *node.pos = *mouse_pos;
+                    }
+                    self.input_state.selected_node = Some(id);
+                }
+                None => self.input_state.selected_node = None,
             }
+        } else {
+            if let Some(id) = self.input_state.selected_node {
+                let node = &mut self.world.nodes[id];
+                println!("Node:  {:#?}", node);
+            }
+            self.input_state.selected_node = None;
         }
     }
 }
