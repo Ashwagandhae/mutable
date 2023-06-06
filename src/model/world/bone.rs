@@ -50,25 +50,23 @@ impl Bone {
         match (&mut node_1.life_state, &mut node_2.life_state) {
             (
                 LifeState::Alive {
-                    energy: ref mut energy_1,
-                    energy_weight: ref mut energy_weight_1,
+                    energy_weight: energy_weight_1,
                     ..
                 },
                 LifeState::Alive {
-                    energy: ref mut energy_2,
-                    energy_weight: ref mut energy_weight_2,
+                    energy_weight: energy_weight_2,
                     ..
                 },
             ) => {
-                let energy_ratio = *energy_1 / *energy_2;
+                let energy_ratio = node_1.energy / node_2.energy;
                 let energy_weight_ratio = *energy_weight_1 / *energy_weight_2;
                 let energy_change = if energy_ratio < energy_weight_ratio {
                     0.1
                 } else {
                     -0.1
                 };
-                *energy_1 += energy_change;
-                *energy_2 -= energy_change;
+                node_1.energy += energy_change;
+                node_2.energy -= energy_change;
             }
             _ => (),
         }

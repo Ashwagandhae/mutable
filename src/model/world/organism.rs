@@ -18,6 +18,7 @@ pub struct Organism {
     muscle_ids: Vec<GenId>,
     pub new_organisms: Vec<Organism>,
     pub delete: bool,
+    next_child_genome: Option<Genome>,
 }
 
 impl Organism {
@@ -32,6 +33,7 @@ impl Organism {
             muscle_ids: Vec::new(),
             new_organisms: Vec::new(),
             delete: false,
+            next_child_genome: None,
         }
     }
     fn clear_dead(
@@ -73,6 +75,9 @@ impl Organism {
                     *gene_index += 1;
                     continue;
                 }
+                Gene::Stop => {
+                    continue;
+                }
                 _ => (),
             }
 
@@ -103,18 +108,25 @@ impl Organism {
             };
 
             if let Gene::Egg(gene) = gene {
-                let mut new_genome = self.genome.clone();
-                if random::<f32>() < 0.2 {
-                    new_genome.mutate();
-                }
+                // save genome for child, so that high energy cost genes aren't deleted
+                self.next_child_genome.get_or_insert_with(|| {
+                    let mut new_genome = self.genome.clone();
+                    if random::<f32>() < 0.2 {
+                        for _ in 0..random_range(1, 3) {
+                            new_genome.mutate();
+                        }
+                    }
+                    new_genome
+                });
+                let new_genome = self.next_child_genome.take().unwrap();
+
                 let Gene::Build(build_gene) = new_genome.get_start_gene().1 else {unreachable!()};
                 let energy_cost = build_gene.energy_cost() + gene.starting_energy;
 
-                let energy = nodes[node_id].unwrap_energy_mut();
-                if *energy < energy_cost {
+                if nodes[node_id].energy < energy_cost {
                     continue;
                 }
-                *energy -= energy_cost;
+                nodes[node_id].energy -= energy_cost;
                 let gene_index = nodes[node_id].unwrap_gene_index_mut();
                 *gene_index += 1;
 
@@ -126,11 +138,10 @@ impl Organism {
             } else if let Gene::Build(gene) = gene {
                 let energy_cost = gene.energy_cost();
 
-                let energy = nodes[node_id].unwrap_energy_mut();
-                if *energy < energy_cost {
+                if nodes[node_id].energy < energy_cost {
                     continue;
                 }
-                *energy -= energy_cost;
+                nodes[node_id].energy -= energy_cost;
                 let gene_index = nodes[node_id].unwrap_gene_index_mut();
                 *gene_index += 1;
 

@@ -13,11 +13,10 @@ pub fn random_organisms(
     organisms: &mut Collection<Organism>,
     size: Vec2,
 ) {
-    for _ in 0..((size.x * size.y / 6000.) as usize) {
+    for _ in 0..((size.x * size.y / 3000.) as usize) {
         let genome = Genome::random();
-        let energy = 10.;
         let pos = vec2(random_range(0., size.x), random_range(0., size.y));
-        organisms.push(Organism::build(pos, genome, energy, nodes));
+        organisms.push(Organism::build(pos, genome, 200., nodes));
     }
 }
 

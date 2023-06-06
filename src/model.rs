@@ -1,3 +1,4 @@
+use itertools::iproduct;
 use nannou::prelude::*;
 mod world;
 use world::collection::GenId;
@@ -110,12 +111,13 @@ impl Model {
             return;
         }
         let radius = node.radius * self.camera.zoom;
-        let energy_mult = node.get_energy().max(0.) * 0.025;
+        let energy_mult = node.energy.max(0.) / node.max_energy() * 0.5;
         let color = match &node.life_state {
             LifeState::Alive { kind, .. } => match kind {
                 NodeKind::Leaf => rgb(0.5 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
                 NodeKind::Storage => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.5 + energy_mult),
                 NodeKind::Mouth => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.7 + energy_mult),
+                NodeKind::Spike => rgb(0.7 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
             },
             LifeState::Dead { .. } => rgb(0.5, 0.5, 0.5),
         };
@@ -128,6 +130,23 @@ impl Model {
             .color(rgb(50u8, 50, 50))
             .xy(self.camera.world_to_view(self.world.size / 2.))
             .wh(self.world.size * self.camera.zoom);
+
+        let chunks = &self.world.chunks;
+        for (x, y) in iproduct!(0..chunks.grid_size.0, 0..chunks.grid_size.1) {
+            let chunk = &chunks.grid[y * chunks.grid_size.0 + x];
+            let size = vec2(
+                self.world.size.x / chunks.grid_size.0 as f32,
+                self.world.size.y / chunks.grid_size.1 as f32,
+            );
+            let pos = vec2(x as f32, y as f32) * size + size / 2.;
+            let pos = self.camera.world_to_view(pos);
+            if !self.within_view(pos) {
+                continue;
+            }
+            let size = size * self.camera.zoom;
+            let color = rgb(0.1 + chunk.sun * 0.15, 0.1 + chunk.sun * 0.15, 0.1);
+            draw.rect().color(color).xy(pos).wh(size);
+        }
 
         for node in self.world.nodes.iter() {
             self.draw_node(&draw, node);

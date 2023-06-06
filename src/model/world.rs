@@ -1,7 +1,7 @@
 use nannou::prelude::*;
 
 mod bone;
-mod chunks;
+pub mod chunks;
 pub mod collection;
 mod collide;
 mod gene;
@@ -23,7 +23,7 @@ use organism::Organism;
 use math::Angle;
 use node::{LifeState, NodeKind};
 
-pub const MAX_NODE_RADIUS: f32 = 10.0;
+pub const MAX_NODE_RADIUS: f32 = 20.0;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -113,33 +113,40 @@ impl World {
         }
 
         // splat nodes if they decay
-        for i in 0..self.nodes.full_len() {
-            let Some(node) = self.nodes.get_index(i) else {continue};
+        for node in self.nodes.iter_mut() {
             match node.life_state {
-                LifeState::Dead { decay, energy, .. } => {
-                    if decay >= 2048 {
-                        let new_radius = node.radius / 2.0;
-                        if new_radius > 3.0 {
-                            let new_energy = energy * 0.95;
-                            let splat_vec = Angle(random_range(0.0, 2.0 * PI)).to_vec2();
-
-                            let splat_node_1 = Node::new_dead(
-                                node.pos + splat_vec * new_radius,
-                                new_radius,
-                                new_energy,
-                            );
-                            let splat_node_2 = Node::new_dead(
-                                node.pos - splat_vec * new_radius,
-                                new_radius,
-                                new_energy,
-                            );
-                            self.nodes.push(splat_node_1);
-                            self.nodes.push(splat_node_2);
-                        }
-                        self.nodes.get_index_mut(i).unwrap().delete = true;
+                LifeState::Dead { ref mut decay, .. } => {
+                    // decay faster if bigger
+                    if *decay >= (2048.0 / node.radius * 10.0) as u32 {
+                        *decay = 0;
+                        node.splat = true;
                     }
                 }
                 _ => {}
+            }
+        }
+        for i in 0..self.nodes.full_len() {
+            let Some(node) = self.nodes.get_index(i) else {continue};
+            if node.splat {
+                let new_radius = node.radius / 2.0;
+                let energy = node.energy / 2.0;
+                // dont splat if too small
+                if new_radius > 3.0 {
+                    let new_energy = energy / 2.0;
+                    let splat_vec = Angle(random_range(0.0, 2.0 * PI)).to_vec2();
+
+                    let splat_node =
+                        Node::new_dead(node.pos + splat_vec * new_radius, new_radius, new_energy);
+                    self.nodes.push(splat_node);
+
+                    let node = self.nodes.get_index_mut(i).unwrap();
+                    node.pos = node.pos - splat_vec * new_radius;
+                    node.radius = new_radius;
+                    node.energy = new_energy;
+                    node.splat = false;
+                } else {
+                    self.nodes.get_index_mut(i).unwrap().delete = true;
+                }
             }
         }
 
@@ -239,27 +246,37 @@ fn collide_pair(node_1: &mut Node, node_2: &mut Node) {
         node_2.pos -= pos_change;
         node_2.cramming = node_2.cramming.saturating_add(1);
 
-        collided_pair_eat(node_1, node_2);
-        collided_pair_eat(node_2, node_1);
+        interact_pair(node_1, node_2);
+        interact_pair(node_2, node_1);
     }
 }
 
-fn collided_pair_eat(actor: &mut Node, object: &mut Node) {
+fn interact_pair(actor: &mut Node, object: &mut Node) {
     if actor.delete || object.delete {
         return;
     }
     match &mut actor.life_state {
-        LifeState::Alive {
-            kind,
-            ref mut energy,
-            ..
-        } => match kind {
+        LifeState::Alive { kind, .. } => match kind {
             NodeKind::Mouth => {
-                if actor.radius * 0.8 < object.radius {
+                if actor.radius * 0.9 < object.radius {
                     return;
                 }
-                *energy += object.get_energy();
+                actor.energy += object.energy;
+                object.energy = 0.;
                 object.delete = true;
+            }
+            NodeKind::Spike => {
+                let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 0.5;
+                // get vel towards object and compare to threshold
+                let vel_towards_object =
+                    actor.vel.dot((object.pos - actor.pos).normalize_or_zero());
+                if vel_towards_object < vel_threshold {
+                    return;
+                }
+                if object.radius < 3.0 {
+                    return;
+                }
+                object.splat = true;
             }
             _ => {}
         },

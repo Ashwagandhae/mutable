@@ -11,6 +11,8 @@ pub struct Muscle {
     pub angle: Angle,
     pub strength: f32,
     pub delete: bool,
+
+    pub movement: Option<(f32, f32, f32)>,
 }
 impl Muscle {
     pub fn new(
@@ -19,6 +21,7 @@ impl Muscle {
         node_2: GenId,
         angle: Angle,
         strength: f32,
+        movement: Option<(f32, f32, f32)>,
     ) -> Muscle {
         Muscle {
             joint_node,
@@ -27,9 +30,10 @@ impl Muscle {
             angle,
             strength,
             delete: false,
+            movement,
         }
     }
-    pub fn update(&mut self, nodes: &mut Collection<Node>, _tick: u64) {
+    pub fn update(&mut self, nodes: &mut Collection<Node>, tick: u64) {
         let (Some(joint_node), Some(node_1), Some(node_2)) =
             (nodes.get(self.joint_node), nodes.get(self.node_1), nodes.get(self.node_2)) else {
                 self.delete = true;
@@ -40,10 +44,18 @@ impl Muscle {
             return;
         }
 
+        let real_angle = match self.movement {
+            Some((freq, amp, shift)) => {
+                let angle = amp * (freq * tick as f32 + shift).sin();
+                self.angle + Angle(angle)
+            }
+            None => self.angle,
+        };
+
         let angle_diff = Angle::from_pi_pi_range(
             (node_1.pos - joint_node.pos).angle_between(node_2.pos - joint_node.pos),
         )
-        .0 - self.angle.0;
+        .0 - real_angle.0;
 
         // move towards each other
         let accel_change_1 =

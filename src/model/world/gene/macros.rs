@@ -15,9 +15,26 @@ macro_rules! make_gene_struct {
             fn mutate_one(&mut self) {
                 let mut threshold = 0.0;
                 let delta = 1.0 / count_fields!($( $var ),*) as f32;
-                let random = random::<f32>();
-                $( if random < threshold {
+                let rand = random::<f32>();
+                $( if rand < threshold {
                     self.$var = random_range($lower, $upper);
+                    return;
+                } else {
+                    threshold += delta;
+                } )*
+            }
+            #[allow(unused_assignments)]
+            fn mutate_one_gradual(&mut self) {
+                let mut threshold = 0.0;
+                let delta = 1.0 / count_fields!($( $var ),*) as f32;
+                let rand = random::<f32>();
+                $( if rand < threshold {
+                    if random() {
+                        self.$var += ($upper - $lower) / 10 as $ty;
+                    } else {
+                        self.$var -= ($upper - $lower) / 10 as $ty;
+                    }
+                    self.$var= self.$var.clamp($lower, $upper);
                     return;
                 } else {
                     threshold += delta;

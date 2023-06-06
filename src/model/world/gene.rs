@@ -2,7 +2,7 @@ use super::bone::Bone;
 use super::collection::GenId;
 use super::math::Angle;
 use super::muscle::Muscle;
-use super::node::{self, Node, NodeKind};
+use super::node::{Node, NodeKind};
 use nannou::prelude::*;
 
 mod macros;
@@ -11,16 +11,20 @@ use macros::{count_fields, make_gene_struct, replace_expr};
 use super::MAX_NODE_RADIUS;
 
 make_gene_struct!(pub BuildGene {
-    node_radius: f32 = 3.0..MAX_NODE_RADIUS,
+    node_radius: f32 = 2.0..MAX_NODE_RADIUS,
     node_energy_weight: f32 = 1.0..10.0,
-    node_kind: u8 = 0..3,
-    node_lifespan: u32 = 256..8192,
+    node_kind: u8 = 0..4,
+    node_lifespan: u32 = 256..32_768,
 
-    bone_length: f32 = 5.0..25.0,
+    bone_length: f32 = 5.0..30.0,
 
     has_muscle: u8 = 0..2,
-    muscle_angle: f32 = 0.0..TAU,
-    muscle_strength: f32 = 0.0..1.0,
+        muscle_angle: f32 = 0.0..TAU,
+        muscle_strength: f32 = 0.5..2.0,
+        muscle_has_movement: u8 = 0..2,
+            muscle_freq: f32 = 0.1..2.0,
+            muscle_amp: f32 = 0.0..1.5,
+            muscle_shift: f32 = 0.0..PI,
 
     starting_energy: f32 = 0.0..10.0,
     child_skip: usize = 0..20,
@@ -67,17 +71,24 @@ impl BuildGene {
         }
         let angle = Angle(self.muscle_angle);
         let strength = self.muscle_strength;
-        Some(Muscle::new(joint_id, node_1, node_2, angle, strength))
+        let movement = if self.muscle_has_movement == 0 {
+            None
+        } else {
+            Some((self.muscle_freq, self.muscle_amp, self.muscle_shift))
+        };
+        Some(Muscle::new(
+            joint_id, node_1, node_2, angle, strength, movement,
+        ))
     }
 
     pub fn energy_cost(&self) -> f32 {
         let mut cost = 0.0;
-        cost += self.node_radius.powi(2) / 20.0; // up to 5
-        cost += self.bone_length.max(self.node_radius) / 10.0; // up to 2.5
+        cost += self.node_radius.powi(3) / 50.0; // up to 20
+        cost += self.bone_length.max(self.node_radius) / 20.0; // up to 1.5
         if self.has_muscle == 1 {
             cost += self.muscle_strength; // up to 1
         }
-        cost += self.node_lifespan as f32 / 4096.0; // up to 2
+        cost += self.node_lifespan as f32 / 16_384.0; // up to 2
         cost += self.starting_energy;
         cost
     }
@@ -88,28 +99,41 @@ pub enum Gene {
     Build(BuildGene),
     Egg(EggGene),
     Skip(SkipGene),
+    Stop,
     Junk,
 }
 
 impl Gene {
     pub fn random() -> Gene {
         let r = random::<f32>();
-        if r < 0.5 {
+        if r < 0.3 {
             Gene::Build(BuildGene::random())
-        } else if r < 0.75 {
+        } else if r < 0.6 {
             Gene::Egg(EggGene::random())
-        } else if r < 0.9 {
+        } else if r < 0.8 {
             Gene::Skip(SkipGene::random())
+        } else if r < 0.9 {
+            Gene::Stop
         } else {
             Gene::Junk
         }
     }
 
-    pub fn mutate(&mut self) {
+    pub fn mutate_one(&mut self) {
         match self {
             Gene::Build(gene) => gene.mutate_one(),
             Gene::Egg(gene) => gene.mutate_one(),
             Gene::Skip(gene) => gene.mutate_one(),
+            Gene::Stop => {}
+            Gene::Junk => {}
+        }
+    }
+    pub fn mutate_one_gradual(&mut self) {
+        match self {
+            Gene::Build(gene) => gene.mutate_one_gradual(),
+            Gene::Egg(gene) => gene.mutate_one_gradual(),
+            Gene::Skip(gene) => gene.mutate_one_gradual(),
+            Gene::Stop => {}
             Gene::Junk => {}
         }
     }
@@ -132,9 +156,12 @@ impl Genome {
     }
     pub fn mutate(&mut self) {
         let r = random::<f32>();
-        if r < 0.5 {
+        if r < 0.25 {
             let i = random_range(0, self.genes.len());
-            self.genes[i].mutate();
+            self.genes[i].mutate_one();
+        } else if r < 0.5 {
+            let i = random_range(0, self.genes.len());
+            self.genes[i].mutate_one_gradual();
         } else if r < 0.75 {
             let i = random_range(0, self.genes.len());
             self.genes.remove(i);
