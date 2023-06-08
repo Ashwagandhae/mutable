@@ -3,6 +3,7 @@ use nannou::prelude::*;
 use super::bone::Bone;
 use super::collection::Collection;
 use super::collection::GenId;
+use super::collide::Collider;
 use super::gene::Gene;
 use super::gene::Genome;
 use super::gene::SkipGene;
@@ -12,7 +13,7 @@ use super::node::Node;
 
 #[derive(Debug, Clone)]
 pub struct Organism {
-    genome: Genome,
+    pub genome: Genome,
     node_ids: Vec<GenId>,
     bone_ids: Vec<GenId>,
     muscle_ids: Vec<GenId>,
@@ -48,7 +49,7 @@ impl Organism {
         });
         self.bone_ids.retain(|id| bones.get(*id).is_some());
         self.muscle_ids.retain(|id| muscles.get(*id).is_some());
-        if self.node_ids.len() == 0 {
+        if self.node_ids.is_empty() {
             self.delete = true;
         }
     }
@@ -58,6 +59,7 @@ impl Organism {
         nodes: &mut Collection<Node>,
         bones: &mut Collection<Bone>,
         muscles: &mut Collection<Muscle>,
+        collider: &Collider,
     ) {
         self.clear_dead(nodes, bones, muscles);
         // grow nodes
@@ -67,8 +69,8 @@ impl Organism {
             let gene = self.genome.get(*gene_index);
             // deal with skip
             match gene {
-                Gene::Skip(SkipGene { skip }) => {
-                    *gene_index += skip;
+                Gene::Skip(SkipGene { goto_index }) => {
+                    *gene_index = *goto_index;
                     continue;
                 }
                 Gene::Junk => {
@@ -90,18 +92,19 @@ impl Organism {
                     .collect::<Vec<_>>();
                 let mut pos = Point2::new(0., 0.);
                 for child in children {
-                    pos += child.pos;
+                    pos += child.pos();
                 }
                 let mut average_pos = pos / children.len() as f32;
                 if average_pos == Point2::new(0., 0.) || !average_pos.is_finite() {
-                    average_pos = Point2::new(1., 0.);
+                    average_pos = Angle(random_range(0., TAU)).to_vec2() + nodes[node_id].pos();
                 }
 
                 // get angle from parent to average pos and reverse
-                let parent = nodes.get(node_id).unwrap();
-                let angle =
-                    Angle((average_pos.y - parent.pos.y).atan2(average_pos.x - parent.pos.x))
-                        + Angle(PI);
+
+                let angle = Angle(
+                    (average_pos.y - nodes[node_id].pos().y)
+                        .atan2(average_pos.x - nodes[node_id].pos().x),
+                ) + Angle(PI);
 
                 // create vec of right length
                 angle.to_vec2()
@@ -111,7 +114,7 @@ impl Organism {
                 // save genome for child, so that high energy cost genes aren't deleted
                 self.next_child_genome.get_or_insert_with(|| {
                     let mut new_genome = self.genome.clone();
-                    if random::<f32>() < 0.2 {
+                    if random::<f32>() < 0.3 {
                         for _ in 0..random_range(1, 3) {
                             new_genome.mutate();
                         }
@@ -130,7 +133,22 @@ impl Organism {
                 let gene_index = nodes[node_id].unwrap_gene_index_mut();
                 *gene_index += 1;
 
-                let child_start_pos = nodes[node_id].pos + spawn_direction * gene.child_distance;
+                let min_child_distance = nodes[node_id].radius + build_gene.node_radius;
+                let child_start_pos = nodes[node_id].pos()
+                    + spawn_direction * min_child_distance.max(gene.child_distance);
+
+                // check if child will collide with anything, if so, don't spawn
+                let child_would_collide =
+                    collider
+                        .pos_collides_iter(nodes, child_start_pos)
+                        .any(|node| {
+                            let dist_squared = node.pos().distance_squared(child_start_pos);
+                            let min_dist_squared = (node.radius + build_gene.node_radius).powi(2);
+                            dist_squared < min_dist_squared
+                        });
+                if child_would_collide {
+                    continue;
+                }
 
                 let organism =
                     Organism::build(child_start_pos, new_genome, gene.starting_energy, nodes);
@@ -145,13 +163,11 @@ impl Organism {
                 let gene_index = nodes[node_id].unwrap_gene_index_mut();
                 *gene_index += 1;
 
-                let gene_index = *gene_index;
-
-                let child_start_pos = nodes[node_id].pos + spawn_direction * gene.bone_length;
+                let child_start_pos = nodes[node_id].pos() + spawn_direction * gene.bone_length;
                 // build node
                 let child_id = nodes.push(gene.build_node(
                     child_start_pos,
-                    gene_index + gene.child_skip,
+                    gene.child_goto_index,
                     gene.starting_energy,
                     Some(node_id),
                 ));
@@ -176,5 +192,8 @@ impl Organism {
                 unreachable!()
             };
         }
+    }
+    pub fn node_ids(&self) -> &[GenId] {
+        &self.node_ids
     }
 }

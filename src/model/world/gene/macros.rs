@@ -2,9 +2,13 @@
 macro_rules! make_gene_struct {
     ( $vis:vis $name:ident { $( $var:ident: $ty:ty = $lower:tt..$upper:tt  ),* , } ) => {
         #[derive(Debug, Clone)]
+        #[allow(clippy::identity_op)]
+        #[allow(unused_parens)]
         $vis struct $name {
             $(pub $var: $ty ),*
         }
+        #[allow(clippy::identity_op)]
+        #[allow(unused_parens)]
         impl $name {
             fn random() -> Self {
                 Self {

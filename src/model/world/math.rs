@@ -12,7 +12,7 @@ impl Angle {
             Angle(angle)
         }
     }
-    pub fn to_vec2(&self) -> nannou::prelude::Vec2 {
+    pub fn to_vec2(self) -> nannou::prelude::Vec2 {
         Vec2::new(self.0.cos(), self.0.sin())
     }
 }
@@ -41,4 +41,12 @@ impl std::ops::Sub for Angle {
     fn sub(self, rhs: Self) -> Self::Output {
         Angle((self.0 - rhs.0) % (2. * PI))
     }
+}
+
+pub fn is_zero(f: f32) -> bool {
+    f.abs() < 0.0001
+}
+
+pub fn is_zero_vec2(v: Vec2) -> bool {
+    is_zero(v.x) && is_zero(v.y)
 }

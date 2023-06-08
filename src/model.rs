@@ -27,6 +27,11 @@ pub struct Model {
     pub input_state: InputState,
     pub world: World,
 }
+#[derive(Clone)]
+pub struct NodeInfo {
+    pub node_id: GenId,
+    pub organism_id: Option<GenId>,
+}
 pub struct InputState {
     pub up: bool,
     pub down: bool,
@@ -37,7 +42,8 @@ pub struct InputState {
     pub mouse_pos: Point2,
     pub mouse_pressed: bool,
     pub skip_toggled: bool,
-    pub selected_node: Option<GenId>,
+    pub dragged: Option<NodeInfo>,
+    pub selected: Option<NodeInfo>,
 }
 impl InputState {
     pub fn new() -> InputState {
@@ -51,15 +57,17 @@ impl InputState {
             mouse_pos: Point2::new(0.0, 0.0),
             mouse_pressed: false,
             skip_toggled: false,
-            selected_node: None,
+            dragged: None,
+            selected: None,
         }
     }
     pub fn update(&mut self, event: Event) {
-        match event {
-            Event::WindowEvent {
-                simple: Some(event),
-                ..
-            } => match event {
+        if let Event::WindowEvent {
+            simple: Some(event),
+            ..
+        } = event
+        {
+            match event {
                 KeyPressed(key) => match key {
                     Key::Up => self.up = true,
                     Key::Down => self.down = true,
@@ -72,8 +80,8 @@ impl InputState {
                 KeyReleased(key) => match key {
                     Key::Up => self.up = false,
                     Key::Down => self.down = false,
-                    Key::Left => self.left = false,
                     Key::Right => self.right = false,
+                    Key::Left => self.left = false,
                     Key::Equals => self.plus = false,
                     Key::Minus => self.minus = false,
                     Key::Space => self.skip_toggled = !self.skip_toggled,
@@ -83,8 +91,7 @@ impl InputState {
                 MousePressed(_) => self.mouse_pressed = true,
                 MouseReleased(_) => self.mouse_pressed = false,
                 _ => (),
-            },
-            _ => (),
+            }
         }
     }
 }
@@ -105,7 +112,7 @@ impl Model {
         pos.x > LOWER && pos.x < UPPER && pos.y > LOWER && pos.y < UPPER
     }
     fn draw_node(&self, draw: &Draw, node: &Node) {
-        let pos = self.camera.world_to_view(node.pos);
+        let pos = self.camera.world_to_view(node.pos());
 
         if !self.within_view(pos) {
             return;
@@ -154,8 +161,8 @@ impl Model {
         for bone in self.world.bones.iter() {
             let Some(node_1) = self.world.nodes.get(bone.node_1) else {continue};
             let Some(node_2) = self.world.nodes.get(bone.node_2) else {continue};
-            let pos_1 = self.camera.world_to_view(node_1.pos);
-            let pos_2 = self.camera.world_to_view(node_2.pos);
+            let pos_1 = self.camera.world_to_view(node_1.pos());
+            let pos_2 = self.camera.world_to_view(node_2.pos());
             if !pos_1.is_finite() || !pos_1.is_finite() {
                 continue;
             }
@@ -173,8 +180,8 @@ impl Model {
         for muscle in self.world.muscles.iter() {
             let Some(node_1) = self.world.nodes.get(muscle.node_1) else {continue};
             let Some(node_2) = self.world.nodes.get(muscle.node_2) else {continue};
-            let pos_1 = self.camera.world_to_view(node_1.pos);
-            let pos_2 = self.camera.world_to_view(node_2.pos);
+            let pos_1 = self.camera.world_to_view(node_1.pos());
+            let pos_2 = self.camera.world_to_view(node_2.pos());
             if !pos_1.is_finite() || !pos_1.is_finite() {
                 continue;
             }
@@ -189,7 +196,7 @@ impl Model {
                 .end(pos_2)
                 .weight(radius);
         }
-        draw_gui(&self, app, draw.clone());
+        draw_gui(self, app, draw.clone());
         draw.to_frame(app, &frame).unwrap();
     }
     pub fn update(&mut self, _app: &App, _update: Update) {
@@ -226,37 +233,52 @@ impl Model {
             // move node towards mouse pos
             let mouse_pos = self.camera.view_to_world(self.input_state.mouse_pos);
             // get nearest node
-            let selected_node = self.input_state.selected_node.or_else(|| {
-                let mut nearest_node = None;
+            self.input_state.dragged = self.input_state.dragged.clone().or_else(|| {
                 let mut nearest_dist = 100000000.0;
-                for (id, node) in self.world.nodes.iter_with_ids() {
-                    let dist = node.pos.distance(mouse_pos);
-                    if dist < nearest_dist {
-                        nearest_dist = dist;
-                        nearest_node = Some(id);
+                let mut nearest_node = None;
+                let mut nearest_org = None;
+                for (org_id, org) in self.world.organisms.iter_with_ids() {
+                    for node_id in org.node_ids().iter() {
+                        let Some(node) = &self.world.nodes.get(*node_id) else {continue};
+                        let dist = node.pos().distance(mouse_pos);
+                        if dist < nearest_dist {
+                            nearest_dist = dist;
+                            nearest_node = Some(*node_id);
+                            nearest_org = Some(org_id);
+                        }
                     }
                 }
-                nearest_node
+                if let Some(node_id) = nearest_node {
+                    Some(NodeInfo {
+                        node_id,
+                        organism_id: nearest_org,
+                    })
+                } else {
+                    None
+                }
             });
 
             // move node towards mouse pos
-            let Some(id) = selected_node else {return};
-            match &mut self.world.nodes.get_mut(id) {
+            let Some(dragged) = &self.input_state.dragged else {return};
+            match &mut self.world.nodes.get_mut(dragged.node_id) {
                 Some(ref mut node) => {
-                    let dist = node.pos.distance(mouse_pos);
+                    let dist = node.pos().distance(mouse_pos);
                     if dist > 0.0 {
-                        *node.pos = *mouse_pos;
+                        *node.pos_mut() = mouse_pos;
                     }
-                    self.input_state.selected_node = Some(id);
                 }
-                None => self.input_state.selected_node = None,
+                None => self.input_state.dragged = None,
             }
         } else {
-            if let Some(id) = self.input_state.selected_node {
-                let node = &mut self.world.nodes[id];
+            if let Some(dragged) = &self.input_state.dragged {
+                let Some(node) = &mut self.world.nodes.get(dragged.node_id) else {return};
                 println!("Node:  {:#?}", node);
+                if let Some(organism_id) = dragged.organism_id {
+                    let Some(organism) = &mut self.world.organisms.get(organism_id) else {return};
+                    println!("Organism:  {:#?}", organism);
+                }
+                self.input_state.selected = self.input_state.dragged.take();
             }
-            self.input_state.selected_node = None;
         }
     }
 }
@@ -272,12 +294,13 @@ fn draw_gui(model: &Model, app: &App, draw: Draw) {
             .left_justify();
         y -= 20.0;
     };
-    let texts = [
-        &format!("FPS: {}", app.fps() as u32),
-        &format!("Nodes: {}", model.world.nodes.len()),
-        &format!("Bones: {}", model.world.bones.len()),
-        &format!("Muscles: {}", model.world.muscles.len()),
+    let texts = vec![
+        format!("FPS: {}", app.fps() as u32),
+        format!("Nodes: {}", model.world.nodes.len()),
+        format!("Bones: {}", model.world.bones.len()),
+        format!("Muscles: {}", model.world.muscles.len()),
     ];
+
     // draw rect behind
     draw.rect()
         .color(BLACK)

@@ -1,15 +1,16 @@
 use nannou::prelude::*;
 
 mod bone;
+mod brain;
 pub mod chunks;
 pub mod collection;
 mod collide;
-mod gene;
+pub mod gene;
 mod init;
 mod math;
 mod muscle;
 pub mod node;
-mod organism;
+pub mod organism;
 
 use bone::Bone;
 use chunks::Chunks;
@@ -22,8 +23,11 @@ use organism::Organism;
 
 use math::Angle;
 use node::{LifeState, NodeKind};
+use rayon::prelude::ParallelIterator;
 
-pub const MAX_NODE_RADIUS: f32 = 20.0;
+use self::math::is_zero_vec2;
+
+pub const MAX_NODE_RADIUS: f32 = 15.0;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -43,7 +47,7 @@ impl World {
         let mut bones = Collection::new();
         let mut muscles = Collection::new();
         let mut organisms = Collection::new();
-        let size = vec2(2000., 2000.);
+        let size = vec2(2250., 2250.);
         let chunks = Chunks::new(size, 40.0);
 
         random_organisms(&mut nodes, &mut bones, &mut muscles, &mut organisms, size);
@@ -90,9 +94,9 @@ impl World {
         self.muscles.retain(|muscle| !muscle.delete);
     }
     fn update_nodes(&mut self) {
-        for node in self.nodes.iter_mut() {
-            node.update(self.chunks.get(node.pos));
-        }
+        self.nodes.par_iter_mut().for_each(|node| {
+            node.update(self.chunks.get(node.pos()));
+        });
         // kill nodes if no parent
         for i in 0..self.nodes.full_len() {
             let Some(Node {
@@ -113,18 +117,15 @@ impl World {
         }
 
         // splat nodes if they decay
-        for node in self.nodes.iter_mut() {
-            match node.life_state {
-                LifeState::Dead { ref mut decay, .. } => {
-                    // decay faster if bigger
-                    if *decay >= (2048.0 / node.radius * 10.0) as u32 {
-                        *decay = 0;
-                        node.splat = true;
-                    }
+        self.nodes.par_iter_mut().for_each(|node| {
+            if let LifeState::Dead { ref mut decay, .. } = node.life_state {
+                // decay faster if bigger
+                if *decay >= (2048.0 / node.radius * 10.0) as u32 {
+                    *decay = 0;
+                    node.splat = true;
                 }
-                _ => {}
             }
-        }
+        });
         for i in 0..self.nodes.full_len() {
             let Some(node) = self.nodes.get_index(i) else {continue};
             if node.splat {
@@ -136,14 +137,15 @@ impl World {
                     let splat_vec = Angle(random_range(0.0, 2.0 * PI)).to_vec2();
 
                     let splat_node =
-                        Node::new_dead(node.pos + splat_vec * new_radius, new_radius, new_energy);
+                        Node::new_dead(node.pos() + splat_vec * new_radius, new_radius, new_energy);
                     self.nodes.push(splat_node);
 
                     let node = self.nodes.get_index_mut(i).unwrap();
-                    node.pos = node.pos - splat_vec * new_radius;
+                    *node.pos_mut() -= splat_vec * new_radius;
                     node.radius = new_radius;
                     node.energy = new_energy;
                     node.splat = false;
+                    node.vel = vec2(0.0, 0.0);
                 } else {
                     self.nodes.get_index_mut(i).unwrap().delete = true;
                 }
@@ -154,26 +156,29 @@ impl World {
 
         // collide nodes with collider
         self.collider.par_collide(&mut self.nodes, collide_pair);
-        // self.nodes.retain(|node| node.cramming < 6); // TODO: revert this
-        for node in self.nodes.iter_mut() {
-            if node.cramming > 8 {
-                node.die();
-            }
-            node.cramming = 0;
-        }
 
         // keep nodes in bounds
         for node in self.nodes.iter_mut() {
-            node.pos.x = node.pos.x.clamp(0.0, self.size.x);
-            node.pos.y = node.pos.y.clamp(0.0, self.size.y);
+            if node.pos().x < 0.0
+                || node.pos().x >= self.size.x
+                || node.pos().y < 0.0
+                || node.pos().y >= self.size.y
+            {
+                *node.pos_mut() = node.pos().clamp(vec2(0.0, 0.0), self.size);
+            }
         }
     }
 
     fn grow_organisms(&mut self) {
         let mut new_organisms = Vec::new();
         for organism in self.organisms.iter_mut() {
-            organism.grow(&mut self.nodes, &mut self.bones, &mut self.muscles);
-            new_organisms.extend(organism.new_organisms.drain(..));
+            organism.grow(
+                &mut self.nodes,
+                &mut self.bones,
+                &mut self.muscles,
+                &self.collider,
+            );
+            new_organisms.append(&mut organism.new_organisms);
         }
         self.organisms.extend(&mut new_organisms);
         self.organisms.retain(|organism| !organism.delete);
@@ -234,17 +239,24 @@ impl World {
 //     }
 // }
 fn collide_pair(node_1: &mut Node, node_2: &mut Node) {
-    let dist = node_1.pos.distance(node_2.pos);
-    let min_dist = node_1.radius + node_2.radius;
-    if dist < min_dist {
-        // move them away from each other
-        let diff = node_1.pos - node_2.pos;
-        let pos_change = diff.normalize_or_zero() * (min_dist - dist) / 2.0;
+    // if let (PosChange::None, PosChange::None) = (&node_1.pos_change, &node_2.pos_change) {
+    //     return;
+    // }
 
-        node_1.pos += pos_change;
-        node_1.cramming = node_1.cramming.saturating_add(1);
-        node_2.pos -= pos_change;
-        node_2.cramming = node_2.cramming.saturating_add(1);
+    let dist_squared = node_1.pos().distance_squared(node_2.pos());
+    let min_dist_squared = (node_1.radius + node_2.radius).powi(2);
+    if dist_squared < min_dist_squared {
+        // move them away from each other
+        let dist = dist_squared.sqrt();
+        let min_dist = node_1.radius + node_2.radius;
+        let diff = node_1.pos() - node_2.pos();
+        let pos_change = diff / dist * (min_dist - dist) / 2.0;
+        if is_zero_vec2(pos_change) {
+            return;
+        }
+
+        *node_1.pos_mut() += pos_change;
+        *node_2.pos_mut() -= pos_change;
 
         interact_pair(node_1, node_2);
         interact_pair(node_2, node_1);
@@ -266,10 +278,11 @@ fn interact_pair(actor: &mut Node, object: &mut Node) {
                 object.delete = true;
             }
             NodeKind::Spike => {
-                let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 0.5;
+                let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 3.0;
                 // get vel towards object and compare to threshold
+                let relative_vel = actor.vel - object.vel;
                 let vel_towards_object =
-                    actor.vel.dot((object.pos - actor.pos).normalize_or_zero());
+                    relative_vel.dot((object.pos() - actor.pos()).normalize_or_zero());
                 if vel_towards_object < vel_threshold {
                     return;
                 }

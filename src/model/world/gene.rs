@@ -6,9 +6,8 @@ use super::node::{Node, NodeKind};
 use nannou::prelude::*;
 
 mod macros;
-use macros::{count_fields, make_gene_struct, replace_expr};
-
 use super::MAX_NODE_RADIUS;
+use macros::{count_fields, make_gene_struct, replace_expr};
 
 make_gene_struct!(pub BuildGene {
     node_radius: f32 = 2.0..MAX_NODE_RADIUS,
@@ -27,14 +26,14 @@ make_gene_struct!(pub BuildGene {
             muscle_shift: f32 = 0.0..PI,
 
     starting_energy: f32 = 0.0..10.0,
-    child_skip: usize = 0..20,
+    child_goto_index: usize = 0..20,
 });
 make_gene_struct!(pub EggGene {
     starting_energy: f32 = 0.0..20.0,
     child_distance: f32 = 5.0..25.0,
 });
 make_gene_struct!(pub SkipGene {
-    skip: usize = 0..20,
+    goto_index: usize = 0..20,
 });
 
 impl BuildGene {
@@ -93,7 +92,6 @@ impl BuildGene {
         cost
     }
 }
-
 #[derive(Debug, Clone)]
 pub enum Gene {
     Build(BuildGene),
@@ -141,7 +139,7 @@ impl Gene {
 
 #[derive(Debug, Clone)]
 pub struct Genome {
-    pub genes: Vec<Gene>,
+    genes: Vec<Gene>,
 }
 
 impl Genome {
@@ -155,32 +153,67 @@ impl Genome {
         ret
     }
     pub fn mutate(&mut self) {
-        let r = random::<f32>();
-        if r < 0.25 {
-            let i = random_range(0, self.genes.len());
-            self.genes[i].mutate_one();
-        } else if r < 0.5 {
-            let i = random_range(0, self.genes.len());
-            self.genes[i].mutate_one_gradual();
-        } else if r < 0.75 {
-            let i = random_range(0, self.genes.len());
-            self.genes.remove(i);
-            self.make_valid();
-        } else {
-            let i = random_range(0, self.genes.len());
-            self.genes.insert(i, Gene::random());
+        let mutation_count = random_range(1, self.genes.len() / 5 + 2);
+        for _ in 0..mutation_count {
+            let r = random::<f32>();
+            if r < 0.25 {
+                let i = random_range(0, self.genes.len());
+                self.genes[i].mutate_one();
+            } else if r < 0.5 {
+                let i = random_range(0, self.genes.len());
+                self.genes[i].mutate_one_gradual();
+            } else if r < 0.75 {
+                let i = random_range(0, self.genes.len());
+                for gene in self.genes.iter_mut() {
+                    if let Gene::Skip(SkipGene { ref mut goto_index })
+                    | Gene::Build(BuildGene {
+                        child_goto_index: ref mut goto_index,
+                        ..
+                    }) = gene
+                    {
+                        if *goto_index > i {
+                            *goto_index -= 1;
+                        }
+                    }
+                }
+                self.genes.remove(i);
+            } else {
+                let i = random_range(0, self.genes.len());
+                for gene in self.genes.iter_mut() {
+                    if let Gene::Skip(SkipGene { ref mut goto_index })
+                    | Gene::Build(BuildGene {
+                        child_goto_index: ref mut goto_index,
+                        ..
+                    }) = gene
+                    {
+                        if *goto_index >= i {
+                            *goto_index += 1;
+                        }
+                    }
+                }
+                self.genes.insert(i, Gene::random());
+            }
         }
+
+        self.make_valid();
     }
     pub fn get(&self, index: usize) -> &Gene {
         &self.genes[index % self.genes.len()]
     }
     fn make_valid(&mut self) {
-        // check if there are still build genes
         let mut has_build = false;
-        for gene in &self.genes {
+        let len = self.genes.len();
+        for gene in self.genes[..].iter_mut() {
             if let Gene::Build { .. } = gene {
                 has_build = true;
-                break;
+            }
+            if let Gene::Skip(SkipGene { ref mut goto_index })
+            | Gene::Build(BuildGene {
+                child_goto_index: ref mut goto_index,
+                ..
+            }) = gene
+            {
+                *goto_index %= len;
             }
         }
         if !has_build {

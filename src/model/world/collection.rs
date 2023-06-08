@@ -1,19 +1,27 @@
 use std::ops::{Index, IndexMut};
 
+use rayon::prelude::*;
+
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub struct GenId {
     pub index: usize,
     gen: usize,
 }
 #[derive(Debug, Clone)]
-pub struct Collection<Item> {
+pub struct Collection<Item>
+where
+    Item: Send,
+{
     items: Vec<Option<Item>>,
     removed: Vec<usize>,
     gens: Vec<usize>,
 }
 
 #[allow(dead_code)]
-impl<Item> Collection<Item> {
+impl<Item> Collection<Item>
+where
+    Item: Send,
+{
     pub fn new() -> Collection<Item> {
         Collection {
             items: Vec::new(),
@@ -96,6 +104,16 @@ impl<Item> Collection<Item> {
     pub fn get_index_mut(&mut self, i: usize) -> Option<&mut Item> {
         self.items[i].as_mut()
     }
+    pub fn get_2_index(&self, i_1: usize, i_2: usize) -> (Option<&Item>, Option<&Item>) {
+        // make sure ids are not the same
+        if i_1 == i_2 {
+            return (None, None);
+        }
+        // put them in right order
+        let (i_1, i_2) = if i_1 < i_2 { (i_1, i_2) } else { (i_2, i_1) };
+        let (left, right) = self.items.split_at(i_2);
+        (left[i_1].as_ref(), right[0].as_ref())
+    }
     pub fn get_2_index_mut(
         &mut self,
         i_1: usize,
@@ -116,6 +134,9 @@ impl<Item> Collection<Item> {
     // allow reveres
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Item> + DoubleEndedIterator {
         self.items.iter_mut().filter_map(|item| item.as_mut())
+    }
+    pub fn par_iter_mut(&mut self) -> impl ParallelIterator<Item = &mut Item> {
+        self.items.par_iter_mut().filter_map(|item| item.as_mut())
     }
     pub fn iter_with_indices(&self) -> impl Iterator<Item = (usize, &Item)> {
         self.items
@@ -177,7 +198,10 @@ impl<Item> Collection<Item> {
     }
 }
 
-impl<Item> Index<GenId> for Collection<Item> {
+impl<Item> Index<GenId> for Collection<Item>
+where
+    Item: Send,
+{
     type Output = Item;
 
     fn index(&self, index: GenId) -> &Self::Output {
@@ -185,7 +209,10 @@ impl<Item> Index<GenId> for Collection<Item> {
     }
 }
 
-impl<Item> IndexMut<GenId> for Collection<Item> {
+impl<Item> IndexMut<GenId> for Collection<Item>
+where
+    Item: Send,
+{
     fn index_mut(&mut self, index: GenId) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }

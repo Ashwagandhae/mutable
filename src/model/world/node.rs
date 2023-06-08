@@ -1,6 +1,6 @@
 use nannou::prelude::*;
 
-use super::{chunks::Chunk, collection::GenId};
+use super::{chunks::Chunk, collection::GenId, math::is_zero_vec2};
 
 #[derive(Debug, Clone)]
 pub enum NodeKind {
@@ -37,7 +37,7 @@ pub enum LifeState {
 
 #[derive(Debug, Clone)]
 pub struct Node {
-    pub pos: Point2,
+    pos: Point2,
     pub radius: f32,
     pub vel: Vec2,
     accel: Vec2,
@@ -45,11 +45,11 @@ pub struct Node {
     pub life_state: LifeState,
     pub energy: f32,
 
-    pub cramming: u8,
     pub delete: bool,
     pub splat: bool,
 }
 impl Node {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pos: Point2,
         radius: f32,
@@ -65,7 +65,6 @@ impl Node {
             radius,
             vel: Vec2::new(0., 0.),
             accel: Vec2::new(0., 0.),
-            cramming: 0,
 
             life_state: LifeState::Alive {
                 kind,
@@ -88,7 +87,6 @@ impl Node {
             radius,
             vel: Vec2::new(0., 0.),
             accel: Vec2::new(0., 0.),
-            cramming: 0,
 
             life_state: LifeState::Dead { decay: 0 },
 
@@ -103,16 +101,25 @@ impl Node {
             self.accel += accel;
         }
     }
+    pub fn pos(&self) -> Point2 {
+        self.pos
+    }
+    pub fn pos_mut(&mut self) -> &mut Point2 {
+        &mut self.pos
+    }
     pub fn max_energy(&self) -> f32 {
         self.radius.powi(3) / 50.0 * 8.
     }
+
     pub fn update(&mut self, chunk: &Chunk) {
         self.vel += self.accel;
-        self.vel = self.vel * 0.9;
+        self.vel *= 0.9;
         if !self.vel.is_finite() {
             panic!("vel not finite");
         }
-        self.pos += self.vel;
+        if !is_zero_vec2(self.vel) {
+            self.pos += self.vel;
+        }
         self.accel = Vec2::new(0., 0.);
 
         let max_energy = self.max_energy();
@@ -124,8 +131,8 @@ impl Node {
                 kind,
                 ..
             } => {
-                const LEAF_ENERGY_RATE: f32 = 0.0001;
-                const ENERGY_LOSS_RATE: f32 = 0.000_000_2;
+                const LEAF_ENERGY_RATE: f32 = 0.000_1;
+                const ENERGY_LOSS_RATE: f32 = 0.000_002;
                 if let NodeKind::Leaf = kind {
                     self.energy += LEAF_ENERGY_RATE * self.radius.powi(2) * chunk.sun;
                 }

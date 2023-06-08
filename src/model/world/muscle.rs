@@ -53,15 +53,15 @@ impl Muscle {
         };
 
         let angle_diff = Angle::from_pi_pi_range(
-            (node_1.pos - joint_node.pos).angle_between(node_2.pos - joint_node.pos),
+            (node_1.pos() - joint_node.pos()).angle_between(node_2.pos() - joint_node.pos()),
         )
         .0 - real_angle.0;
 
         // move towards each other
         let accel_change_1 =
-            (node_1.pos - joint_node.pos).perp().normalize() * angle_diff * self.strength;
+            (node_1.pos() - joint_node.pos()).perp().normalize() * angle_diff * self.strength;
         let accel_change_2 =
-            -(node_2.pos - joint_node.pos).perp().normalize() * angle_diff * self.strength;
+            -(node_2.pos() - joint_node.pos()).perp().normalize() * angle_diff * self.strength;
 
         // apply
         let node_1 = nodes.get_mut(self.node_1).unwrap();
