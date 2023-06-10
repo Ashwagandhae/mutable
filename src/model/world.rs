@@ -47,7 +47,7 @@ impl World {
         let mut bones = Collection::new();
         let mut muscles = Collection::new();
         let mut organisms = Collection::new();
-        let size = vec2(2250., 2250.);
+        let size = vec2(3375., 3375.);
         let chunks = Chunks::new(size, 40.0);
 
         random_organisms(&mut nodes, &mut bones, &mut muscles, &mut organisms, size);
@@ -300,7 +300,7 @@ fn interact_pair(actor: &mut Node, object: &mut Node) {
                 if vel_towards_object < vel_threshold {
                     return;
                 }
-                if object.radius < 3.0 {
+                if object.radius < 4.0 {
                     return;
                 }
                 object.splat = true;

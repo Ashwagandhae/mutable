@@ -51,6 +51,13 @@ macro_rules! make_gene_struct {
                 }
             }
         }
+        impl Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "(")?;
+                $( write!(f, "{}: {}, ", stringify!($var), self.$var)?; )*
+                write!(f, ")")
+            }
+        }
     };
 }
 pub(crate) use make_gene_struct;

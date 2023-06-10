@@ -6,10 +6,10 @@ use super::collection::GenId;
 use super::collide::Collider;
 use super::gene::Gene;
 use super::gene::Genome;
-use super::gene::SkipGene;
 use super::math::Angle;
 use super::muscle::Muscle;
 use super::node::Node;
+use super::node::NodeKind;
 
 const MAX_NODE_CHILDREN: usize = 4;
 #[derive(Debug, Clone)]
@@ -27,7 +27,8 @@ impl Organism {
     pub fn build(pos: Vec2, genome: Genome, energy: f32, nodes: &mut Collection<Node>) -> Organism {
         let (index, gene) = genome.get_start_gene();
         let Gene::Build(gene) = gene else { unreachable!() };
-        let node_id = nodes.push(gene.build_node(pos, index + 1, energy, None));
+        let index = genome.get_next_deeper(index);
+        let node_id = nodes.push(gene.build_node(pos, index, energy, None));
         Organism {
             genome,
             node_ids: vec![node_id],
@@ -66,23 +67,29 @@ impl Organism {
         // grow nodes
         for i in (0..self.node_ids.len()).rev() {
             let node_id = self.node_ids[i];
-            let gene_index = nodes[node_id].unwrap_gene_index_mut();
-            let gene = self.genome.get(*gene_index);
-            // deal with skip
-            match gene {
-                Gene::Skip(SkipGene { goto_index }) => {
-                    *gene_index = *goto_index;
-                    continue;
+
+            let Some(real_gene_index) = nodes[node_id].unwrap_gene_index() else {continue};
+            let (gene_index, gene) = {
+                let Some(real_gene) = self.genome.get(*real_gene_index) else { unreachable!() };
+                match real_gene {
+                    // if its repeat, try to find first non repeat gene
+                    Gene::Repeat => {
+                        let Some((index, gene)) = self.genome.get_next_non_repeat(*real_gene_index).map(|index|{
+                        self.genome.get(index).map(|gene| (index, gene))
+                    }).flatten() else {
+                        // if no non repeat gene is found, we are at the end, so stop gene_index
+                        *nodes[node_id].unwrap_gene_index_mut() = None;
+                        continue;
+                    };
+                        (index, gene)
+                    }
+                    Gene::Build(_) => (*real_gene_index, real_gene),
+                    _ => {
+                        unreachable!()
+                    }
                 }
-                Gene::Junk => {
-                    *gene_index += 1;
-                    continue;
-                }
-                Gene::Stop => {
-                    continue;
-                }
-                _ => (),
-            }
+            };
+
             let children = &self
                 .node_ids
                 .iter()
@@ -111,7 +118,7 @@ impl Organism {
                 angle.to_vec2()
             };
 
-            if let Gene::Egg(gene) = gene {
+            if let NodeKind::Egg = nodes[node_id].unwrap_kind() {
                 // save genome for child, so that high energy cost genes aren't deleted
                 self.next_child_genome.get_or_insert_with(|| {
                     let mut new_genome = self.genome.clone();
@@ -123,7 +130,7 @@ impl Organism {
                 let new_genome = self.next_child_genome.take().unwrap();
 
                 let Gene::Build(build_gene) = new_genome.get_start_gene().1 else {unreachable!()};
-                let energy_cost = build_gene.energy_cost() + gene.energy_cost(new_genome.len());
+                let energy_cost = build_gene.energy_cost() + new_genome.len() as f32 / 10.;
 
                 let min_child_distance = nodes[node_id].radius + build_gene.node_radius;
                 let child_start_pos = nodes[node_id].pos()
@@ -146,7 +153,8 @@ impl Organism {
                     continue;
                 }
                 nodes[node_id].energy -= energy_cost;
-                *nodes[node_id].unwrap_gene_index_mut() += 1;
+                // dont advance gene index, so that the egg is built again forever
+                // *nodes[node_id].unwrap_gene_index_mut() = new_genome.get_next(*gene_index);
 
                 let starting_energy = build_gene.starting_energy;
                 let organism = Organism::build(child_start_pos, new_genome, starting_energy, nodes);
@@ -160,14 +168,15 @@ impl Organism {
                 if children.len() >= MAX_NODE_CHILDREN {
                     continue;
                 }
+                let child_index = self.genome.get_next_deeper(gene_index);
+                *nodes[node_id].unwrap_gene_index_mut() = self.genome.get_next(*real_gene_index);
                 nodes[node_id].energy -= energy_cost;
-                *nodes[node_id].unwrap_gene_index_mut() += 1;
 
                 let child_start_pos = nodes[node_id].pos() + spawn_direction * gene.bone_length;
                 // build node
                 let child_id = nodes.push(gene.build_node(
                     child_start_pos,
-                    gene.child_goto_index,
+                    child_index,
                     gene.starting_energy,
                     Some(node_id),
                 ));

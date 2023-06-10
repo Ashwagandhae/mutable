@@ -126,6 +126,7 @@ impl Model {
                 NodeKind::Storage => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.5 + energy_mult),
                 NodeKind::Mouth => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.7 + energy_mult),
                 NodeKind::Spike => rgb(0.7 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
+                NodeKind::Egg => rgb(0.5 + energy_mult, 0.5 + energy_mult, 0.7 + energy_mult),
             },
             LifeState::Dead { .. } => rgb(0.5, 0.5, 0.5),
         };
@@ -154,15 +155,15 @@ impl Model {
             let size = size * self.camera.zoom;
             let color = rgb(0.1 + chunk.sun * 0.15, 0.1 + chunk.sun * 0.15, 0.1);
             draw.rect().color(color).xy(pos).wh(size);
-            let tide: Vec2 = chunk.tide;
             // draw arrow for tide
-            let tide = tide * self.camera.zoom / TIDE_MULT * 20.;
-            let color = rgb(0.5 + chunk.sun * 0.5, 0.5 + chunk.sun * 0.5, 0.5);
-            draw.arrow()
-                .color(color)
-                .start(pos)
-                .end(pos + tide)
-                .weight(2.0 * self.camera.zoom);
+            // let tide: Vec2 = chunk.tide;
+            // let tide = tide * self.camera.zoom / TIDE_MULT * 20.;
+            // let color = rgb(0.5 + chunk.sun * 0.5, 0.5 + chunk.sun * 0.5, 0.5);
+            // draw.arrow()
+            //     .color(color)
+            //     .start(pos)
+            //     .end(pos + tide)
+            //     .weight(2.0 * self.camera.zoom);
         }
 
         for node in self.world.nodes.iter() {
@@ -282,10 +283,10 @@ impl Model {
         } else {
             if let Some(dragged) = &self.input_state.dragged {
                 let Some(node) = &mut self.world.nodes.get(dragged.node_id) else {return};
-                println!("Node:  {:#?}", node);
+                println!("Node: {:#?}", node);
                 if let Some(organism_id) = dragged.organism_id {
                     let Some(organism) = &mut self.world.organisms.get(organism_id) else {return};
-                    println!("Organism:  {:#?}", organism);
+                    println!("{}", organism.genome);
                 }
                 self.input_state.selected = self.input_state.dragged.take();
             }

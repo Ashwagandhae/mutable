@@ -27,10 +27,10 @@ impl Chunks {
                 tide: vec2(0., 0.),
             })
             .collect();
-        for _ in 0..4 {
+        for _ in 0..8 {
             // choose random sun position
             let sun_pos: Point2 = (random_range(0., size.x), random_range(0., size.y)).into();
-            let sun_radius = size.x / 3.0;
+            let sun_radius = size.x / 4.0;
             for (y, x) in iproduct!(0..grid_height, 0..grid_width) {
                 let pos = vec2(x as f32 * cell_size, y as f32 * cell_size);
                 // sun is from 0 to 1

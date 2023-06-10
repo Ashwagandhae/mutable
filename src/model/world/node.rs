@@ -2,8 +2,12 @@ use nannou::prelude::*;
 
 use super::{chunks::Chunk, collection::GenId, math::is_zero_vec2};
 
+pub const LEAF_ENERGY_RATE: f32 = 0.000_08;
+pub const ENERGY_LOSS_RATE: f32 = 0.000_002;
+
 #[derive(Debug, Clone)]
 pub enum NodeKind {
+    Egg,
     Storage,
     Leaf,
     Mouth,
@@ -12,10 +16,11 @@ pub enum NodeKind {
 impl From<u8> for NodeKind {
     fn from(n: u8) -> NodeKind {
         match n {
-            0 => NodeKind::Storage,
+            0 => NodeKind::Egg,
             1 => NodeKind::Leaf,
             2 => NodeKind::Mouth,
             3 => NodeKind::Spike,
+            4 => NodeKind::Storage,
             _ => panic!("invalid node kind"),
         }
     }
@@ -26,7 +31,7 @@ pub enum LifeState {
         kind: NodeKind,
         parent_id: Option<GenId>,
         age: u32,
-        gene_index: usize,
+        gene_index: Option<usize>,
         energy_weight: f32,
         lifespan: u32,
     },
@@ -56,7 +61,7 @@ impl Node {
         energy: f32,
         energy_weight: f32,
         kind: NodeKind,
-        gene_index: usize,
+        gene_index: Option<usize>,
         parent_id: Option<GenId>,
         lifespan: u32,
     ) -> Node {
@@ -108,7 +113,7 @@ impl Node {
         &mut self.pos
     }
     pub fn max_energy(&self) -> f32 {
-        self.radius.powi(3) / 50.0 * 8.
+        self.radius.powi(3) / 50.0 * 16.
     }
 
     pub fn update(&mut self, chunk: &Chunk) {
@@ -135,8 +140,6 @@ impl Node {
                 kind,
                 ..
             } => {
-                const LEAF_ENERGY_RATE: f32 = 0.000_04;
-                const ENERGY_LOSS_RATE: f32 = 0.000_002;
                 if let NodeKind::Leaf = kind {
                     self.energy += LEAF_ENERGY_RATE * self.radius.powi(2) * chunk.sun;
                 }
@@ -182,12 +185,24 @@ impl Node {
         }
     }
 
-    pub fn unwrap_gene_index_mut(&mut self) -> &mut usize {
+    pub fn unwrap_gene_index_mut(&mut self) -> &mut Option<usize> {
         match self.life_state {
             LifeState::Alive {
                 ref mut gene_index, ..
             } => gene_index,
             LifeState::Dead { .. } => panic!("dead node has no gene index"),
+        }
+    }
+    pub fn unwrap_gene_index(&self) -> &Option<usize> {
+        match self.life_state {
+            LifeState::Alive { ref gene_index, .. } => gene_index,
+            LifeState::Dead { .. } => panic!("dead node has no gene index"),
+        }
+    }
+    pub fn unwrap_kind(&self) -> &NodeKind {
+        match self.life_state {
+            LifeState::Alive { ref kind, .. } => kind,
+            LifeState::Dead { .. } => panic!("dead node has no kind"),
         }
     }
     pub fn struct_energy(&self) -> f32 {

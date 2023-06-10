@@ -1,6 +1,6 @@
 use super::collection::{Collection, GenId};
 use super::math::Angle;
-use super::node::Node;
+use super::node::{Node, ENERGY_LOSS_RATE};
 
 #[derive(Debug, Clone)]
 pub struct Muscle {
@@ -69,6 +69,6 @@ impl Muscle {
         let node_2 = nodes.get_mut(self.node_2).unwrap();
         node_2.accel(accel_change_2);
         let joint_node = nodes.get_mut(self.joint_node).unwrap();
-        // joint_node.energy -= accel_change_1.length() * 0.001;
+        joint_node.energy -= accel_change_1.length() * ENERGY_LOSS_RATE * 2.;
     }
 }

@@ -12,7 +12,7 @@ use macros::{count_fields, make_gene_struct, replace_expr};
 make_gene_struct!(pub BuildGene {
     node_radius: f32 = 2.0..MAX_NODE_RADIUS,
     node_energy_weight: f32 = 1.0..10.0,
-    node_kind: u8 = 0..5,
+    node_kind: u8 = 0..4,
     node_lifespan: u32 = 256..32_768,
 
     bone_length: f32 = 5.0..30.0,
@@ -27,13 +27,20 @@ make_gene_struct!(pub BuildGene {
     muscle_shift: f32 = 0.0..PI,
 
     starting_energy: f32 = 0.0..30.0,
+    child_goto_index: usize = 0..20,
+});
+make_gene_struct!(pub EggGene {
+    unused: f32 = 5.0..30.0,
+});
+make_gene_struct!(pub SkipGene {
+    goto_index: usize = 0..20,
 });
 
 impl BuildGene {
     pub fn build_node(
         &self,
         pos: Point2,
-        gene_index: Option<usize>,
+        gene_index: usize,
         energy: f32,
         parent_id: Option<GenId>,
     ) -> Node {
@@ -76,7 +83,7 @@ impl BuildGene {
     pub fn energy_cost(&self) -> f32 {
         let mut cost = 0.0;
         cost += self.node_radius.powi(3) / 50.0; // up to 67.5, 7 is 6.86, 5 is 2.5, 10 is 20
-        cost += self.bone_length.max(self.node_radius) / 15.0; // up to 2.0
+        cost += self.bone_length.max(self.node_radius) / 10.0; // up to 3.0
         if self.has_muscle == 1 {
             cost += self.muscle_strength; // up to 1.0
         }
@@ -85,38 +92,52 @@ impl BuildGene {
         cost
     }
 }
-
+impl EggGene {
+    pub fn energy_cost(&self, genome_len: usize) -> f32 {
+        genome_len as f32 / 10.0 // 10 is 1.0, 20 is 2.0
+    }
+}
 #[derive(Debug, Clone)]
 pub enum Gene {
     Build(BuildGene),
-    Repeat,
-    Up,
+    Egg(EggGene),
+    Skip(SkipGene),
+    Stop,
+    Junk,
 }
 
 impl Gene {
     pub fn random() -> Gene {
         let r = random::<f32>();
-        if r < 0.5 {
+        if r < 0.3 {
             Gene::Build(BuildGene::random())
-        } else if r < 0.75 {
-            Gene::Repeat
+        } else if r < 0.6 {
+            Gene::Egg(EggGene::random())
+        } else if r < 0.8 {
+            Gene::Skip(SkipGene::random())
+        } else if r < 0.9 {
+            Gene::Stop
         } else {
-            Gene::Up
+            Gene::Junk
         }
     }
 
     pub fn mutate_one(&mut self) {
         match self {
             Gene::Build(gene) => gene.mutate_one(),
-            Gene::Repeat => {}
-            Gene::Up => {}
+            Gene::Egg(gene) => gene.mutate_one(),
+            Gene::Skip(gene) => gene.mutate_one(),
+            Gene::Stop => {}
+            Gene::Junk => {}
         }
     }
     pub fn mutate_one_gradual(&mut self) {
         match self {
             Gene::Build(gene) => gene.mutate_one_gradual(),
-            Gene::Repeat => {}
-            Gene::Up => {}
+            Gene::Egg(gene) => gene.mutate_one_gradual(),
+            Gene::Skip(gene) => gene.mutate_one_gradual(),
+            Gene::Stop => {}
+            Gene::Junk => {}
         }
     }
 }
@@ -127,16 +148,13 @@ pub struct Genome {
 }
 
 impl Genome {
-    pub fn random_plant() -> Genome {
+    pub fn random() -> Genome {
         let mut genes = Vec::new();
-        let mut leaf = BuildGene::random();
-        leaf.node_kind = 1;
-        let mut egg = BuildGene::random();
-        egg.node_kind = 0;
-        genes.push(Gene::Build(leaf));
-        genes.push(Gene::Build(egg));
+        for _ in 0..random_range(1, 20) {
+            genes.push(Gene::random());
+        }
         let mut ret = Genome { genes };
-        ret.mutate();
+        ret.make_valid();
         ret
     }
     pub fn mutate(&mut self) {
@@ -149,118 +167,89 @@ impl Genome {
             } else if r < 0.5 {
                 let i = random_range(0, self.genes.len());
                 self.genes[i].mutate_one_gradual();
-            } else if r < 0.75 {
+            } else if r < 0.7 {
                 let i = random_range(0, self.genes.len());
+                for gene in self.genes.iter_mut() {
+                    if let Gene::Skip(SkipGene { ref mut goto_index })
+                    | Gene::Build(BuildGene {
+                        child_goto_index: ref mut goto_index,
+                        ..
+                    }) = gene
+                    {
+                        if *goto_index > i {
+                            *goto_index -= 1;
+                        }
+                    }
+                }
                 self.genes.remove(i);
-            } else {
+            } else if r < 0.9 {
                 let i = random_range(0, self.genes.len());
+                for gene in self.genes.iter_mut() {
+                    if let Gene::Skip(SkipGene { ref mut goto_index })
+                    | Gene::Build(BuildGene {
+                        child_goto_index: ref mut goto_index,
+                        ..
+                    }) = gene
+                    {
+                        if *goto_index >= i {
+                            *goto_index += 1;
+                        }
+                    }
+                }
                 self.genes.insert(i, Gene::random());
+            } else {
+                // duplicate a gene
+                let i = random_range(0, self.genes.len());
+                for gene in self.genes.iter_mut() {
+                    if let Gene::Skip(SkipGene { ref mut goto_index })
+                    | Gene::Build(BuildGene {
+                        child_goto_index: ref mut goto_index,
+                        ..
+                    }) = gene
+                    {
+                        if *goto_index > i {
+                            *goto_index += 1;
+                        }
+                    }
+                }
+                self.genes.insert(i, self.genes[i].clone());
             }
         }
 
         self.make_valid();
     }
-    pub fn get(&self, index: usize) -> Option<&Gene> {
-        self.genes.get(index)
-    }
-    pub fn get_next(&self, index: usize) -> Option<usize> {
-        let mut depth = match self.genes[index] {
-            Gene::Build(_) => 1,
-            Gene::Repeat => 0,
-            Gene::Up => panic!("Cannot get next from Up gene"),
-        };
-        for i in (index + 1)..self.genes.len() {
-            match self.genes[i] {
-                Gene::Build(_) => {
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                    depth += 1;
-                }
-                Gene::Repeat => {
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                }
-                Gene::Up => {
-                    depth -= 1;
-                    if depth < 0 {
-                        return None;
-                    }
-                }
-            }
-        }
-        None
-    }
-    pub fn get_next_non_repeat(&self, index: usize) -> Option<usize> {
-        let mut ret = self.get_next(index);
-        while ret.is_some() && matches!(self.genes[ret.unwrap()], Gene::Repeat) {
-            ret = self.get_next(ret.unwrap());
-        }
-        ret
-    }
-    pub fn get_next_deeper(&self, index: usize) -> Option<usize> {
-        assert!(matches!(self.genes[index], Gene::Build(_)));
-        self.genes
-            .get(index + 1)
-            .map(|gene| match gene {
-                Gene::Build(_) | Gene::Repeat => Some(index + 1),
-                Gene::Up => None,
-            })
-            .flatten()
+    pub fn get(&self, index: usize) -> &Gene {
+        &self.genes[index % self.genes.len()]
     }
     fn make_valid(&mut self) {
-        let has_build = self
-            .genes
-            .iter()
-            .any(|gene| matches!(gene, Gene::Build { .. }));
+        let mut has_build = false;
+        let len = self.genes.len();
+        for gene in self.genes[..].iter_mut() {
+            if let Gene::Build { .. } = gene {
+                has_build = true;
+            }
+            if let Gene::Skip(SkipGene { ref mut goto_index })
+            | Gene::Build(BuildGene {
+                child_goto_index: ref mut goto_index,
+                ..
+            }) = gene
+            {
+                *goto_index %= len;
+            }
+        }
         if !has_build {
-            self.genes.insert(0, Gene::Build(BuildGene::random()));
+            self.genes.push(Gene::Build(BuildGene::random()));
         }
     }
     pub fn get_start_gene(&self) -> (usize, &Gene) {
         self.genes
             .iter()
             .enumerate()
+            .cycle()
             .find(|(_, gene)| matches!(gene, Gene::Build { .. }))
             .unwrap()
     }
     pub fn len(&self) -> usize {
         self.genes.len()
-    }
-}
-
-use std::fmt::Display;
-
-impl Display for Genome {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut depth = 0;
-        for gene in &self.genes {
-            let mut tabs = depth;
-            let s = match gene {
-                Gene::Build(gene) => {
-                    depth += 1;
-                    format!("Build {} {{", gene)
-                }
-                Gene::Repeat => {
-                    format!("Repeat")
-                }
-                Gene::Up => {
-                    depth -= 1;
-                    tabs -= 1;
-                    format!("}} Up")
-                }
-            };
-
-            let tabs = "\t".repeat(0.max(tabs) as usize);
-
-            writeln!(f, "{tabs}{s}")?;
-        }
-        while depth > 0 {
-            depth -= 1;
-            let tabs = "\t".repeat(depth as usize);
-            writeln!(f, "{tabs}}}")?;
-        }
-        Ok(())
     }
 }

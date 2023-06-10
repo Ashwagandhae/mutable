@@ -14,7 +14,7 @@ pub fn random_organisms(
     size: Vec2,
 ) {
     for _ in 0..((size.x * size.y / 1500.) as usize) {
-        let genome = Genome::random();
+        let genome = Genome::random_plant();
         let pos = vec2(random_range(0., size.x), random_range(0., size.y));
         organisms.push(Organism::build(pos, genome, 20., nodes));
     }
