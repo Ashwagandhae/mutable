@@ -68,5 +68,7 @@ impl Muscle {
         node_1.accel(accel_change_1);
         let node_2 = nodes.get_mut(self.node_2).unwrap();
         node_2.accel(accel_change_2);
+        let joint_node = nodes.get_mut(self.joint_node).unwrap();
+        // joint_node.energy -= accel_change_1.length() * 0.001;
     }
 }

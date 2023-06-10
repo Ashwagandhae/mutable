@@ -5,6 +5,7 @@ use world::collection::GenId;
 use world::node::{Node, NodeKind};
 use world::World;
 
+use self::world::chunks::TIDE_MULT;
 use self::world::node::LifeState;
 
 pub const WINDOW_SIZE: u32 = 800;
@@ -153,6 +154,15 @@ impl Model {
             let size = size * self.camera.zoom;
             let color = rgb(0.1 + chunk.sun * 0.15, 0.1 + chunk.sun * 0.15, 0.1);
             draw.rect().color(color).xy(pos).wh(size);
+            let tide: Vec2 = chunk.tide;
+            // draw arrow for tide
+            let tide = tide * self.camera.zoom / TIDE_MULT * 20.;
+            let color = rgb(0.5 + chunk.sun * 0.5, 0.5 + chunk.sun * 0.5, 0.5);
+            draw.arrow()
+                .color(color)
+                .start(pos)
+                .end(pos + tide)
+                .weight(2.0 * self.camera.zoom);
         }
 
         for node in self.world.nodes.iter() {

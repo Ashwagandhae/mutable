@@ -11,6 +11,7 @@ use super::math::Angle;
 use super::muscle::Muscle;
 use super::node::Node;
 
+const MAX_NODE_CHILDREN: usize = 4;
 #[derive(Debug, Clone)]
 pub struct Organism {
     pub genome: Genome,
@@ -82,17 +83,17 @@ impl Organism {
                 }
                 _ => (),
             }
-
+            let children = &self
+                .node_ids
+                .iter()
+                .map(|id| (*id, &nodes[*id]))
+                .filter(|(_, node)| *node.unwrap_parent_id() == Some(node_id))
+                .map(|(id, _)| id)
+                .collect::<Vec<_>>();
             let spawn_direction = {
-                let children = &self
-                    .node_ids
-                    .iter()
-                    .map(|id| &nodes[*id])
-                    .filter(|node| *node.unwrap_parent_id() == Some(node_id))
-                    .collect::<Vec<_>>();
                 let mut pos = Point2::new(0., 0.);
-                for child in children {
-                    pos += child.pos();
+                for child_id in children {
+                    pos += nodes[*child_id].pos();
                 }
                 let mut average_pos = pos / children.len() as f32;
                 if average_pos == Point2::new(0., 0.) || !average_pos.is_finite() {
@@ -114,28 +115,19 @@ impl Organism {
                 // save genome for child, so that high energy cost genes aren't deleted
                 self.next_child_genome.get_or_insert_with(|| {
                     let mut new_genome = self.genome.clone();
-                    if random::<f32>() < 0.3 {
-                        for _ in 0..random_range(1, 3) {
-                            new_genome.mutate();
-                        }
+                    if random::<f32>() < 0.5 {
+                        new_genome.mutate();
                     }
                     new_genome
                 });
                 let new_genome = self.next_child_genome.take().unwrap();
 
                 let Gene::Build(build_gene) = new_genome.get_start_gene().1 else {unreachable!()};
-                let energy_cost = build_gene.energy_cost() + gene.starting_energy;
-
-                if nodes[node_id].energy < energy_cost {
-                    continue;
-                }
-                nodes[node_id].energy -= energy_cost;
-                let gene_index = nodes[node_id].unwrap_gene_index_mut();
-                *gene_index += 1;
+                let energy_cost = build_gene.energy_cost() + gene.energy_cost(new_genome.len());
 
                 let min_child_distance = nodes[node_id].radius + build_gene.node_radius;
                 let child_start_pos = nodes[node_id].pos()
-                    + spawn_direction * min_child_distance.max(gene.child_distance);
+                    + spawn_direction * min_child_distance.max(build_gene.bone_length);
 
                 // check if child will collide with anything, if so, don't spawn
                 let child_would_collide =
@@ -150,8 +142,14 @@ impl Organism {
                     continue;
                 }
 
-                let organism =
-                    Organism::build(child_start_pos, new_genome, gene.starting_energy, nodes);
+                if nodes[node_id].energy < energy_cost {
+                    continue;
+                }
+                nodes[node_id].energy -= energy_cost;
+                *nodes[node_id].unwrap_gene_index_mut() += 1;
+
+                let starting_energy = build_gene.starting_energy;
+                let organism = Organism::build(child_start_pos, new_genome, starting_energy, nodes);
                 self.new_organisms.push(organism);
             } else if let Gene::Build(gene) = gene {
                 let energy_cost = gene.energy_cost();
@@ -159,9 +157,11 @@ impl Organism {
                 if nodes[node_id].energy < energy_cost {
                     continue;
                 }
+                if children.len() >= MAX_NODE_CHILDREN {
+                    continue;
+                }
                 nodes[node_id].energy -= energy_cost;
-                let gene_index = nodes[node_id].unwrap_gene_index_mut();
-                *gene_index += 1;
+                *nodes[node_id].unwrap_gene_index_mut() += 1;
 
                 let child_start_pos = nodes[node_id].pos() + spawn_direction * gene.bone_length;
                 // build node
@@ -179,14 +179,19 @@ impl Organism {
                 self.bone_ids.push(bone_id);
 
                 // build muscle
-                let parent_id = nodes[node_id].unwrap_parent_id();
-                if gene.has_muscle == 0 || parent_id.is_none() {
+                if gene.has_muscle == 0 {
                     continue;
                 }
-                // unwrap is safe because we know it has a muscle and a parent
-                let parent_id = parent_id.unwrap();
+                let node_1 = if gene.muscle_is_sibling == 1 {
+                    // attach muscle to last_child--(node)--child
+                    children.last()
+                } else {
+                    // attach muscle to parent--(node)--child
+                    nodes[node_id].unwrap_parent_id().as_ref()
+                };
+                let Some(node_1) = node_1 else {continue};
                 let muscle_id =
-                    muscles.push(gene.build_muscle(node_id, parent_id, child_id).unwrap());
+                    muscles.push(gene.build_muscle(node_id, *node_1, child_id).unwrap());
                 self.muscle_ids.push(muscle_id);
             } else {
                 unreachable!()

@@ -135,7 +135,7 @@ impl Collider {
     ) {
         self.update(nodes);
         let nodes_slice = sync_mut_vec::UnsafeMutSlice::new(nodes.get_mut_slice());
-        let even_rows_iter = (0..self.grid_size.1 - 1).into_par_iter().step_by(2);
+        let even_rows_iter = (0..self.grid_size.1).into_par_iter().step_by(2);
         let odd_rows_iter = (1..self.grid_size.1).into_par_iter().step_by(2);
         let collide = |y| {
             for x in 0..self.grid_size.0 {

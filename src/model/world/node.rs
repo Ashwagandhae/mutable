@@ -113,9 +113,13 @@ impl Node {
 
     pub fn update(&mut self, chunk: &Chunk) {
         self.vel += self.accel;
-        self.vel *= 0.9;
+        self.vel += chunk.tide;
+
+        let friction = 1. - (self.radius / 15.0 * 0.4);
+        self.vel *= friction;
         if !self.vel.is_finite() {
-            panic!("vel not finite");
+            println!("vel not finite, {:?}", self.vel);
+            self.vel = Vec2::new(0., 0.);
         }
         if !is_zero_vec2(self.vel) {
             self.pos += self.vel;
@@ -131,7 +135,7 @@ impl Node {
                 kind,
                 ..
             } => {
-                const LEAF_ENERGY_RATE: f32 = 0.000_1;
+                const LEAF_ENERGY_RATE: f32 = 0.000_04;
                 const ENERGY_LOSS_RATE: f32 = 0.000_002;
                 if let NodeKind::Leaf = kind {
                     self.energy += LEAF_ENERGY_RATE * self.radius.powi(2) * chunk.sun;
@@ -185,5 +189,8 @@ impl Node {
             } => gene_index,
             LifeState::Dead { .. } => panic!("dead node has no gene index"),
         }
+    }
+    pub fn struct_energy(&self) -> f32 {
+        self.radius.powi(3) / 50.0
     }
 }

@@ -45,7 +45,7 @@ macro_rules! make_gene_struct {
                 } )*
             }
             #[allow(dead_code)]
-            fn breed(&self, other: &Self) -> Self {
+            fn cross_over(&self, other: &Self) -> Self {
                 Self {
                     $( $var: if random() { self.$var } else { other.$var } ),*
                 }

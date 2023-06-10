@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 itertools = "0.10.5"
 nannou = "0.18.1"
+noise = "0.8.2"
 rand = "0.8.5"
 rayon = "1.7.0"

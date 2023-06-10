@@ -18,19 +18,19 @@ make_gene_struct!(pub BuildGene {
     bone_length: f32 = 5.0..30.0,
 
     has_muscle: u8 = 0..2,
-        muscle_angle: f32 = 0.0..TAU,
-        muscle_strength: f32 = 0.5..2.0,
-        muscle_has_movement: u8 = 0..2,
-            muscle_freq: f32 = 0.1..2.0,
-            muscle_amp: f32 = 0.0..1.5,
-            muscle_shift: f32 = 0.0..PI,
+    muscle_angle: f32 = 0.0..TAU,
+    muscle_strength: f32 = 0.5..2.0,
+    muscle_has_movement: u8 = 0..2,
+    muscle_is_sibling: u8 = 0..2,
+    muscle_freq: f32 = 0.1..2.0,
+    muscle_amp: f32 = 0.0..1.5,
+    muscle_shift: f32 = 0.0..PI,
 
-    starting_energy: f32 = 0.0..10.0,
+    starting_energy: f32 = 0.0..30.0,
     child_goto_index: usize = 0..20,
 });
 make_gene_struct!(pub EggGene {
-    starting_energy: f32 = 0.0..20.0,
-    child_distance: f32 = 5.0..25.0,
+    unused: f32 = 5.0..30.0,
 });
 make_gene_struct!(pub SkipGene {
     goto_index: usize = 0..20,
@@ -82,14 +82,19 @@ impl BuildGene {
 
     pub fn energy_cost(&self) -> f32 {
         let mut cost = 0.0;
-        cost += self.node_radius.powi(3) / 50.0; // up to 20
-        cost += self.bone_length.max(self.node_radius) / 20.0; // up to 1.5
+        cost += self.node_radius.powi(3) / 50.0; // up to 67.5, 7 is 6.86, 5 is 2.5, 10 is 20
+        cost += self.bone_length.max(self.node_radius) / 10.0; // up to 3.0
         if self.has_muscle == 1 {
-            cost += self.muscle_strength; // up to 1
+            cost += self.muscle_strength; // up to 1.0
         }
-        cost += self.node_lifespan as f32 / 16_384.0; // up to 2
+        cost += self.node_lifespan as f32 / 16_384.0; // up to 2.0
         cost += self.starting_energy;
         cost
+    }
+}
+impl EggGene {
+    pub fn energy_cost(&self, genome_len: usize) -> f32 {
+        genome_len as f32 / 10.0 // 10 is 1.0, 20 is 2.0
     }
 }
 #[derive(Debug, Clone)]
@@ -162,7 +167,7 @@ impl Genome {
             } else if r < 0.5 {
                 let i = random_range(0, self.genes.len());
                 self.genes[i].mutate_one_gradual();
-            } else if r < 0.75 {
+            } else if r < 0.7 {
                 let i = random_range(0, self.genes.len());
                 for gene in self.genes.iter_mut() {
                     if let Gene::Skip(SkipGene { ref mut goto_index })
@@ -177,7 +182,7 @@ impl Genome {
                     }
                 }
                 self.genes.remove(i);
-            } else {
+            } else if r < 0.9 {
                 let i = random_range(0, self.genes.len());
                 for gene in self.genes.iter_mut() {
                     if let Gene::Skip(SkipGene { ref mut goto_index })
@@ -192,6 +197,22 @@ impl Genome {
                     }
                 }
                 self.genes.insert(i, Gene::random());
+            } else {
+                // duplicate a gene
+                let i = random_range(0, self.genes.len());
+                for gene in self.genes.iter_mut() {
+                    if let Gene::Skip(SkipGene { ref mut goto_index })
+                    | Gene::Build(BuildGene {
+                        child_goto_index: ref mut goto_index,
+                        ..
+                    }) = gene
+                    {
+                        if *goto_index > i {
+                            *goto_index += 1;
+                        }
+                    }
+                }
+                self.genes.insert(i, self.genes[i].clone());
             }
         }
 
@@ -227,5 +248,8 @@ impl Genome {
             .cycle()
             .find(|(_, gene)| matches!(gene, Gene::Build { .. }))
             .unwrap()
+    }
+    pub fn len(&self) -> usize {
+        self.genes.len()
     }
 }

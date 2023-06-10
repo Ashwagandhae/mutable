@@ -79,11 +79,26 @@ impl World {
             self.grow_organisms();
         }
 
+        if self.tick % 16 == 0 {
+            self.chunks.update(self.tick);
+        }
+
+        if self.nodes.len() == 0 {
+            println!("All nodes dead");
+            random_organisms(
+                &mut self.nodes,
+                &mut self.bones,
+                &mut self.muscles,
+                &mut self.organisms,
+                self.size,
+            );
+        }
+
         self.tick += 1;
     }
     fn update_bones(&mut self) {
         for bone in self.bones.iter_mut() {
-            bone.update(&mut self.nodes);
+            bone.update(&mut self.nodes, &self.chunks);
         }
         self.bones.retain(|bone| !bone.delete);
     }
@@ -164,7 +179,7 @@ impl World {
                 || node.pos().y < 0.0
                 || node.pos().y >= self.size.y
             {
-                *node.pos_mut() = node.pos().clamp(vec2(0.0, 0.0), self.size);
+                *node.pos_mut() = node.pos().clamp(vec2(0.0, 0.0), self.size - vec2(0.1, 0.1));
             }
         }
     }
@@ -273,12 +288,11 @@ fn interact_pair(actor: &mut Node, object: &mut Node) {
                 if actor.radius * 0.9 < object.radius {
                     return;
                 }
-                actor.energy += object.energy;
-                object.energy = 0.;
+                actor.energy += object.energy + object.struct_energy();
                 object.delete = true;
             }
             NodeKind::Spike => {
-                let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 3.0;
+                let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 1.0;
                 // get vel towards object and compare to threshold
                 let relative_vel = actor.vel - object.vel;
                 let vel_towards_object =

@@ -1,6 +1,7 @@
 use nannou::prelude::Vec2;
 
 use super::{
+    chunks::Chunks,
     collection::{Collection, GenId},
     math::is_zero,
     node::{LifeState, Node},
@@ -22,7 +23,7 @@ impl Bone {
             delete: false,
         }
     }
-    pub fn update(&mut self, nodes: &mut Collection<Node>) {
+    pub fn update(&mut self, nodes: &mut Collection<Node>, chunks: &Chunks) {
         let (Some(node_1), Some(node_2)) = (nodes.get(self.node_1), nodes.get(self.node_2)) else {
             self.delete = true;
             return;
@@ -36,11 +37,13 @@ impl Bone {
                 .try_normalize()
                 .unwrap_or(Vec2::new(1., 0.));
 
-        // push water
-        let vel = (node_1.vel + node_2.vel) / 2.;
+        // slow nodes who push water
+        let chunk = chunks.get((node_1.pos() + node_2.pos()) / 2.);
+        // get relative vel compared to chunk tide
+        let vel = (node_1.vel + node_2.vel) / 2. - chunk.tide;
         let facing = (node_2.pos() - node_1.pos()).normalize_or_zero().perp();
         let stroke_amp = vel.dot(facing);
-        let friction = -facing * stroke_amp * 0.5;
+        let friction = -facing * stroke_amp * 0.8;
 
         let (Some(node_1), Some(node_2)) = nodes.get_2_mut(self.node_1, self.node_2) else {unreachable!()};
         if !is_zero(distance_diff) {
