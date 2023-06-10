@@ -22,7 +22,7 @@ make_gene_struct!(pub BuildGene {
     muscle_strength: f32 = 0.5..2.0,
     muscle_has_movement: u8 = 0..2,
     muscle_is_sibling: u8 = 0..2,
-    muscle_freq: f32 = 0.1..2.0,
+    muscle_freq: f32 = 0.1..1.0,
     muscle_amp: f32 = 0.0..1.5,
     muscle_shift: f32 = 0.0..PI,
 

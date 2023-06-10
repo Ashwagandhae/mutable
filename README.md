@@ -1,6 +1,6 @@
 # Mutable
 
-An evolution simulator written in Rust. Currently not even a proof of concept - muscle movement and breeding are not yet implemented. However, you can observe the natural evolution of optimized algae.
+An evolution simulator written in Rust. Currently proof of concept - muscle movement is based on simple sine waves, not brain activity, organisms can't sense their surroundings, and breeding is unimplemented. However, the evolution of plants, detritivores, and sometimes herbivores has already been observed.
 
 Inspired by and based on:
 
