@@ -77,6 +77,7 @@ impl Collider {
             .map(|(i, j)| (current_cell[i], current_cell[j]));
         neighbor_collide.chain(self_collide)
     }
+    #[allow(dead_code)]
     pub fn collide(
         &mut self,
         nodes: &mut Collection<Node>,

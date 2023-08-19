@@ -1,6 +1,6 @@
 use super::bone::Bone;
 use super::collection::Collection;
-use super::gene::Genome;
+use super::genome::Genome;
 use super::muscle::Muscle;
 use super::node::Node;
 use super::organism::Organism;
@@ -16,7 +16,7 @@ pub fn random_organisms(
     for _ in 0..((size.x * size.y / 1500.) as usize) {
         let genome = Genome::random_plant();
         let pos = vec2(random_range(0., size.x), random_range(0., size.y));
-        organisms.push(Organism::build(pos, genome, 20., nodes));
+        organisms.push(Organism::new(pos, genome, 20., nodes));
     }
 }
 

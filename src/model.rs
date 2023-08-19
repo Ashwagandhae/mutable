@@ -5,7 +5,6 @@ use world::collection::GenId;
 use world::node::{Node, NodeKind};
 use world::World;
 
-use self::world::chunks::TIDE_MULT;
 use self::world::node::LifeState;
 
 pub const WINDOW_SIZE: u32 = 800;
@@ -170,8 +169,8 @@ impl Model {
             self.draw_node(&draw, node);
         }
         for bone in self.world.bones.iter() {
-            let Some(node_1) = self.world.nodes.get(bone.node_1) else {continue};
-            let Some(node_2) = self.world.nodes.get(bone.node_2) else {continue};
+            let Some(node_1) = self.world.nodes.get(bone.parent_node) else {continue};
+            let Some(node_2) = self.world.nodes.get(bone.child_node) else {continue};
             let pos_1 = self.camera.world_to_view(node_1.pos());
             let pos_2 = self.camera.world_to_view(node_2.pos());
             if !pos_1.is_finite() || !pos_1.is_finite() {
@@ -287,6 +286,7 @@ impl Model {
                 if let Some(organism_id) = dragged.organism_id {
                     let Some(organism) = &mut self.world.organisms.get(organism_id) else {return};
                     println!("{}", organism.genome);
+                    println!("{}", organism.brain);
                 }
                 self.input_state.selected = self.input_state.dragged.take();
             }

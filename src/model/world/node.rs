@@ -1,39 +1,57 @@
+use int_enum::IntEnum;
 use nannou::prelude::*;
+use strum_macros::{EnumCount, EnumIter};
 
-use super::{chunks::Chunk, collection::GenId, math::is_zero_vec2};
+use crate::model::world::math::sense_angle_diff;
 
+use super::{
+    chunks::Chunk,
+    collection::GenId,
+    math::{is_zero_vec2, Angle},
+};
+
+// pub const LEAF_ENERGY_RATE: f32 = 0.000_08;
 pub const LEAF_ENERGY_RATE: f32 = 0.000_08;
 pub const ENERGY_LOSS_RATE: f32 = 0.000_002;
 
-#[derive(Debug, Clone)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, IntEnum, EnumIter, EnumCount)]
 pub enum NodeKind {
-    Egg,
-    Storage,
-    Leaf,
-    Mouth,
-    Spike,
+    Egg = 0,
+    Leaf = 1,
+    Mouth = 2,
+    Spike = 3,
+    Storage = 4,
 }
-impl From<u8> for NodeKind {
-    fn from(n: u8) -> NodeKind {
-        match n {
-            0 => NodeKind::Egg,
-            1 => NodeKind::Leaf,
-            2 => NodeKind::Mouth,
-            3 => NodeKind::Spike,
-            4 => NodeKind::Storage,
-            _ => panic!("invalid node kind"),
-        }
-    }
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, IntEnum, EnumIter, EnumCount)]
+pub enum SenseKind {
+    Sun = 0,
+    Energy = 1,
+    Age = 2,
+
+    TideAngle = 3,
+    TideSpeed = 4,
+
+    CollideAngle = 5,
+    CollideKind = 6,
+    CollideRadius = 7,
+    CollideSpeed = 8,
 }
+
 #[derive(Debug, Clone)]
 pub enum LifeState {
     Alive {
         kind: NodeKind,
-        parent_id: Option<GenId>,
+        parent: Option<(GenId, Angle)>,
         age: u32,
         gene_index: Option<usize>,
         energy_weight: f32,
         lifespan: u32,
+
+        sense: Option<(SenseKind, f32)>,
+        activate: f32,
     },
     Dead {
         decay: u32,
@@ -62,8 +80,9 @@ impl Node {
         energy_weight: f32,
         kind: NodeKind,
         gene_index: Option<usize>,
-        parent_id: Option<GenId>,
+        parent: Option<(GenId, Angle)>,
         lifespan: u32,
+        sense_kind: Option<SenseKind>,
     ) -> Node {
         Node {
             pos,
@@ -73,11 +92,14 @@ impl Node {
 
             life_state: LifeState::Alive {
                 kind,
-                parent_id,
+                parent,
                 age: 0,
                 gene_index,
                 energy_weight,
                 lifespan,
+
+                sense: sense_kind.map(|sense| (sense, 0.)),
+                activate: 0.,
             },
 
             energy,
@@ -138,6 +160,8 @@ impl Node {
                 ref mut age,
                 lifespan,
                 kind,
+                ref mut sense,
+                parent,
                 ..
             } => {
                 if let NodeKind::Leaf = kind {
@@ -155,6 +179,21 @@ impl Node {
                         if self.energy > max_energy {
                             self.energy = max_energy;
                         }
+                    }
+                }
+                // sense sunlight
+                if let Some((kind, ref mut sense)) = sense {
+                    use SenseKind::*;
+                    *sense = match kind {
+                        Sun => chunk.sun,
+                        Energy => self.energy,
+                        Age => *age as f32,
+                        TideSpeed => chunk.tide.length(),
+                        TideAngle => parent
+                            .map(|(_, a)| sense_angle_diff(a, Angle::from_vec2(chunk.tide)))
+                            .unwrap_or(0.),
+                        // handled by collider
+                        CollideAngle | CollideKind | CollideRadius | CollideSpeed => 0.,
                     }
                 }
 
@@ -178,9 +217,9 @@ impl Node {
         matches!(self.life_state, LifeState::Alive { .. })
     }
 
-    pub fn unwrap_parent_id(&self) -> &Option<GenId> {
+    pub fn unwrap_parent_id(&self) -> Option<GenId> {
         match self.life_state {
-            LifeState::Alive { ref parent_id, .. } => parent_id,
+            LifeState::Alive { ref parent, .. } => parent.map(|(parent_id, _)| parent_id),
             LifeState::Dead { .. } => panic!("dead node has no parent id"),
         }
     }
@@ -207,5 +246,26 @@ impl Node {
     }
     pub fn struct_energy(&self) -> f32 {
         self.radius.powi(3) / 50.0
+    }
+
+    pub fn unwrap_activate(&self) -> &f32 {
+        match self.life_state {
+            LifeState::Alive { ref activate, .. } => activate,
+            LifeState::Dead { .. } => panic!("dead node has no activate"),
+        }
+    }
+    pub fn sense(&self) -> Option<f32> {
+        match self.life_state {
+            LifeState::Alive { ref sense, .. } => sense.map(|(_, sense)| sense),
+            LifeState::Dead { .. } => None,
+        }
+    }
+    pub fn activate(&mut self, new_activate: f32) {
+        match self.life_state {
+            LifeState::Alive {
+                ref mut activate, ..
+            } => *activate = new_activate,
+            LifeState::Dead { .. } => {}
+        }
     }
 }

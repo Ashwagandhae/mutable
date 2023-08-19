@@ -1,3 +1,4 @@
+use int_enum::IntEnum;
 use nannou::prelude::*;
 
 mod bone;
@@ -6,6 +7,7 @@ pub mod chunks;
 pub mod collection;
 mod collide;
 pub mod gene;
+pub mod genome;
 mod init;
 mod math;
 mod muscle;
@@ -25,9 +27,13 @@ use math::Angle;
 use node::{LifeState, NodeKind};
 use rayon::prelude::ParallelIterator;
 
-use self::math::is_zero_vec2;
+use crate::model::world::{math::sense_angle_diff, node::SenseKind};
+
+use self::math::{is_zero_vec2, vel_towards};
 
 pub const MAX_NODE_RADIUS: f32 = 15.0;
+const SPLAT_RADIUS_DELTA: f32 = 0.6;
+const SPLAT_MIN_RADIUS: f32 = 2.0;
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -75,6 +81,8 @@ impl World {
 
         self.update_nodes();
 
+        self.think_organsims();
+
         if self.tick % 64 == 0 {
             self.grow_organisms();
         }
@@ -83,7 +91,7 @@ impl World {
             self.chunks.update(self.tick);
         }
 
-        if self.nodes.len() == 0 {
+        if self.nodes.iter().all(|node| !node.is_alive()) {
             println!("All nodes dead");
             random_organisms(
                 &mut self.nodes,
@@ -104,7 +112,7 @@ impl World {
     }
     fn update_muscles(&mut self) {
         for muscle in self.muscles.iter_mut() {
-            muscle.update(&mut self.nodes, self.tick);
+            muscle.update(&mut self.nodes);
         }
         self.muscles.retain(|muscle| !muscle.delete);
     }
@@ -117,7 +125,7 @@ impl World {
             let Some(Node {
                 life_state:
                     LifeState::Alive {
-                        parent_id: Some(parent_id),
+                        parent: Some((parent_id, _)),
                         ..
                     },
                 ..
@@ -135,7 +143,7 @@ impl World {
         self.nodes.par_iter_mut().for_each(|node| {
             if let LifeState::Dead { ref mut decay, .. } = node.life_state {
                 // decay faster if bigger
-                if *decay >= (2048.0 / node.radius * 10.0) as u32 {
+                if *decay >= (1024.0 / node.radius * 10.0) as u32 {
                     *decay = 0;
                     node.splat = true;
                 }
@@ -144,10 +152,10 @@ impl World {
         for i in 0..self.nodes.full_len() {
             let Some(node) = self.nodes.get_index(i) else {continue};
             if node.splat {
-                let new_radius = node.radius / 2.0;
+                let new_radius = node.radius * SPLAT_RADIUS_DELTA;
                 let energy = node.energy / 2.0;
                 // dont splat if too small
-                if new_radius > 3.0 {
+                if new_radius > SPLAT_MIN_RADIUS {
                     let new_energy = energy / 2.0;
                     let splat_vec = Angle(random_range(0.0, 2.0 * PI)).to_vec2();
 
@@ -184,6 +192,11 @@ impl World {
         }
     }
 
+    fn think_organsims(&mut self) {
+        for organism in self.organisms.iter_mut() {
+            organism.think(&mut self.nodes, self.tick);
+        }
+    }
     fn grow_organisms(&mut self) {
         let mut new_organisms = Vec::new();
         for organism in self.organisms.iter_mut() {
@@ -273,11 +286,46 @@ fn collide_pair(node_1: &mut Node, node_2: &mut Node) {
         *node_1.pos_mut() += pos_change;
         *node_2.pos_mut() -= pos_change;
 
+        sense_pair(node_1, node_2);
+        sense_pair(node_2, node_1);
+
         interact_pair(node_1, node_2);
         interact_pair(node_2, node_1);
     }
 }
-
+fn sense_pair(actor: &mut Node, object: &Node) {
+    let pos = actor.pos();
+    match &mut actor.life_state {
+        LifeState::Alive {
+            sense: Some((kind, ref mut value)),
+            parent,
+            ..
+        } => {
+            use SenseKind::*;
+            // must handle all Collide... variants
+            let new_value = match kind {
+                CollideAngle => {
+                    let angle = Angle::from_vec2(pos - object.pos());
+                    parent
+                        .map(|(_, a)| sense_angle_diff(a, angle))
+                        .unwrap_or(0.)
+                }
+                CollideKind => {
+                    if object.is_alive() {
+                        object.unwrap_kind().int_value() as f32
+                    } else {
+                        -1.0
+                    }
+                }
+                CollideRadius => object.radius,
+                CollideSpeed => vel_towards(pos, actor.vel, object.pos(), object.vel),
+                _ => return, // if not a collide sense, its handled elsewhere so return
+            };
+            *value = new_value;
+        }
+        _ => {}
+    }
+}
 fn interact_pair(actor: &mut Node, object: &mut Node) {
     if actor.delete || object.delete {
         return;
@@ -294,19 +342,18 @@ fn interact_pair(actor: &mut Node, object: &mut Node) {
             NodeKind::Spike => {
                 let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 1.0;
                 // get vel towards object and compare to threshold
-                let relative_vel = actor.vel - object.vel;
                 let vel_towards_object =
-                    relative_vel.dot((object.pos() - actor.pos()).normalize_or_zero());
+                    vel_towards(actor.pos(), actor.vel, object.pos(), object.vel);
                 if vel_towards_object < vel_threshold {
                     return;
                 }
-                if object.radius < 4.0 {
+                if object.radius < SPLAT_MIN_RADIUS / SPLAT_RADIUS_DELTA {
                     return;
                 }
                 object.splat = true;
             }
             _ => {}
         },
-        LifeState::Dead { .. } => (),
+        _ => {}
     }
 }

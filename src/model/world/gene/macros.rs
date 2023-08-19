@@ -12,7 +12,7 @@ macro_rules! make_gene_struct {
         impl $name {
             fn random() -> Self {
                 Self {
-                    $( $var: random_range($lower, $upper) ),*
+                    $( $var: random_range($lower as $ty, $upper as $ty) ),*
                 }
             }
             #[allow(unused_assignments)]
@@ -21,7 +21,7 @@ macro_rules! make_gene_struct {
                 let delta = 1.0 / count_fields!($( $var ),*) as f32;
                 let rand = random::<f32>();
                 $( if rand < threshold {
-                    self.$var = random_range($lower, $upper);
+                    self.$var = random_range($lower as $ty, $upper as $ty);
                     return;
                 } else {
                     threshold += delta;
@@ -34,11 +34,11 @@ macro_rules! make_gene_struct {
                 let rand = random::<f32>();
                 $( if rand < threshold {
                     if random() {
-                        self.$var += ($upper - $lower) / 10 as $ty;
+                        self.$var += ($upper as $ty - $lower as $ty) / 10 as $ty;
                     } else {
-                        self.$var -= ($upper - $lower) / 10 as $ty;
+                        self.$var -= ($upper as $ty - $lower as $ty) / 10 as $ty;
                     }
-                    self.$var= self.$var.clamp($lower, $upper);
+                    self.$var= self.$var.clamp($lower as $ty, $upper as $ty);
                     return;
                 } else {
                     threshold += delta;
@@ -60,6 +60,7 @@ macro_rules! make_gene_struct {
         }
     };
 }
+
 pub(crate) use make_gene_struct;
 
 macro_rules! replace_expr {

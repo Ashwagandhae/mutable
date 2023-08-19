@@ -1,9 +1,13 @@
 use super::bone::Bone;
+use super::brain::BrainPlan;
 use super::collection::GenId;
 use super::math::Angle;
 use super::muscle::Muscle;
-use super::node::{Node, NodeKind};
+use super::node::{Node, NodeKind, SenseKind};
+use int_enum::IntEnum;
+
 use nannou::prelude::*;
+use strum::EnumCount;
 
 mod macros;
 use super::MAX_NODE_RADIUS;
@@ -12,8 +16,11 @@ use macros::{count_fields, make_gene_struct, replace_expr};
 make_gene_struct!(pub BuildGene {
     node_radius: f32 = 2.0..MAX_NODE_RADIUS,
     node_energy_weight: f32 = 1.0..10.0,
-    node_kind: u8 = 0..5,
+    node_kind: u8 = 0..(NodeKind::COUNT),
     node_lifespan: u32 = 256..32_768,
+
+    has_sense: u8 = 0..2,
+    sense_kind: u8 = 0..(SenseKind::COUNT),
 
     bone_length: f32 = 5.0..30.0,
 
@@ -22,9 +29,6 @@ make_gene_struct!(pub BuildGene {
     muscle_strength: f32 = 0.5..2.0,
     muscle_has_movement: u8 = 0..2,
     muscle_is_sibling: u8 = 0..2,
-    muscle_freq: f32 = 0.1..1.0,
-    muscle_amp: f32 = 0.0..1.5,
-    muscle_shift: f32 = 0.0..PI,
 
     starting_energy: f32 = 0.0..30.0,
 });
@@ -35,12 +39,22 @@ impl BuildGene {
         pos: Point2,
         gene_index: Option<usize>,
         energy: f32,
-        parent_id: Option<GenId>,
+        parent: Option<(GenId, Point2)>,
     ) -> Node {
-        let kind = NodeKind::from(self.node_kind);
+        let kind = NodeKind::from_int(self.node_kind).unwrap();
         let energy_weight = self.node_energy_weight;
         let lifespan = self.node_lifespan;
         let radius = self.node_radius;
+        let sense_kind = if self.has_sense == 0 {
+            None
+        } else {
+            Some(SenseKind::from_int(self.sense_kind).unwrap())
+        };
+
+        let parent = parent.map(|(id, parent_pos)| {
+            let angle = Angle::from_vec2(pos - parent_pos);
+            (id, angle)
+        });
 
         Node::new(
             pos,
@@ -49,13 +63,14 @@ impl BuildGene {
             energy_weight,
             kind,
             gene_index,
-            parent_id,
+            parent,
             lifespan,
+            sense_kind,
         )
     }
-    pub fn build_bone(&self, node_1: GenId, node_2: GenId, min_length: f32) -> Bone {
+    pub fn build_bone(&self, parent_node: GenId, child_node: GenId, min_length: f32) -> Bone {
         let length = self.bone_length.max(min_length);
-        Bone::new(node_1, node_2, length)
+        Bone::new(parent_node, child_node, length)
     }
     pub fn build_muscle(&self, joint_id: GenId, node_1: GenId, node_2: GenId) -> Option<Muscle> {
         if self.has_muscle == 0 {
@@ -63,14 +78,12 @@ impl BuildGene {
         }
         let angle = Angle(self.muscle_angle);
         let strength = self.muscle_strength;
-        let movement = if self.muscle_has_movement == 0 {
-            None
-        } else {
-            Some((self.muscle_freq, self.muscle_amp, self.muscle_shift))
-        };
-        Some(Muscle::new(
-            joint_id, node_1, node_2, angle, strength, movement,
-        ))
+        // let movement = if self.muscle_has_movement == 0 {
+        //     None
+        // } else {
+        //     Some((self.muscle_freq, self.muscle_amp, self.muscle_shift))
+        // };
+        Some(Muscle::new(joint_id, node_1, node_2, angle, strength))
     }
 
     pub fn energy_cost(&self) -> f32 {
@@ -86,9 +99,18 @@ impl BuildGene {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BuildId(usize);
+
+impl BuildId {
+    fn new() -> BuildId {
+        BuildId(random())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Gene {
-    Build(BuildGene),
+    Build((BuildGene, BuildId)),
     Repeat,
     Up,
 }
@@ -97,7 +119,7 @@ impl Gene {
     pub fn random() -> Gene {
         let r = random::<f32>();
         if r < 0.5 {
-            Gene::Build(BuildGene::random())
+            Gene::Build((BuildGene::random(), BuildId::new()))
         } else if r < 0.75 {
             Gene::Repeat
         } else {
@@ -107,14 +129,14 @@ impl Gene {
 
     pub fn mutate_one(&mut self) {
         match self {
-            Gene::Build(gene) => gene.mutate_one(),
+            Gene::Build((gene, _)) => gene.mutate_one(),
             Gene::Repeat => {}
             Gene::Up => {}
         }
     }
     pub fn mutate_one_gradual(&mut self) {
         match self {
-            Gene::Build(gene) => gene.mutate_one_gradual(),
+            Gene::Build((gene, _)) => gene.mutate_one_gradual(),
             Gene::Repeat => {}
             Gene::Up => {}
         }
@@ -122,40 +144,81 @@ impl Gene {
 }
 
 #[derive(Debug, Clone)]
-pub struct Genome {
+pub struct BodyPlan {
     genes: Vec<Gene>,
 }
 
-impl Genome {
-    pub fn random_plant() -> Genome {
+pub enum Mutation {
+    Add,
+    Delete,
+    Edit,
+    EditGradual,
+}
+
+impl Mutation {
+    fn random() -> Mutation {
+        let r = random::<f32>();
+        if r < 0.25 {
+            Mutation::Add
+        } else if r < 0.5 {
+            Mutation::Delete
+        } else if r < 0.75 {
+            Mutation::Edit
+        } else {
+            Mutation::EditGradual
+        }
+    }
+}
+
+impl BodyPlan {
+    pub fn random_plant(brain: &mut BrainPlan) -> BodyPlan {
         let mut genes = Vec::new();
+
         let mut leaf = BuildGene::random();
         leaf.node_kind = 1;
         let mut egg = BuildGene::random();
         egg.node_kind = 0;
-        genes.push(Gene::Build(leaf));
-        genes.push(Gene::Build(egg));
-        let mut ret = Genome { genes };
-        ret.mutate();
+
+        let leaf_id = BuildId::new();
+        let egg_id = BuildId::new();
+
+        let leaf_gene = Gene::Build((leaf, leaf_id.clone()));
+        let egg_gene = Gene::Build((egg, egg_id.clone()));
+
+        brain.mutate_gene(&leaf_gene, Mutation::Add);
+        brain.mutate_gene(&egg_gene, Mutation::Add);
+
+        genes.push(leaf_gene);
+        genes.push(egg_gene);
+
+        let mut ret = BodyPlan { genes };
+        ret.mutate(brain);
         ret
     }
-    pub fn mutate(&mut self) {
+    pub fn mutate(&mut self, brain: &mut BrainPlan) {
         let mutation_count = random_range(1, self.genes.len() / 5 + 2);
         for _ in 0..mutation_count {
-            let r = random::<f32>();
-            if r < 0.25 {
-                let i = random_range(0, self.genes.len());
-                self.genes[i].mutate_one();
-            } else if r < 0.5 {
-                let i = random_range(0, self.genes.len());
-                self.genes[i].mutate_one_gradual();
-            } else if r < 0.75 {
-                let i = random_range(0, self.genes.len());
-                self.genes.remove(i);
-            } else {
-                let i = random_range(0, self.genes.len());
-                self.genes.insert(i, Gene::random());
-            }
+            let i = random_range(0, self.genes.len());
+            let mutation = Mutation::random();
+            match mutation {
+                Mutation::Add => {
+                    let new_gene = Gene::random();
+                    brain.mutate_gene(&new_gene, mutation);
+                    self.genes.insert(i, new_gene);
+                }
+                Mutation::Delete => {
+                    let rem_gene = self.genes.remove(i);
+                    brain.mutate_gene(&rem_gene, mutation);
+                }
+                Mutation::Edit => {
+                    self.genes[i].mutate_one();
+                    brain.mutate_gene(&self.genes[i], mutation);
+                }
+                Mutation::EditGradual => {
+                    self.genes[i].mutate_one_gradual();
+                    brain.mutate_gene(&self.genes[i], mutation);
+                }
+            };
         }
 
         self.make_valid();
@@ -215,7 +278,8 @@ impl Genome {
             .iter()
             .any(|gene| matches!(gene, Gene::Build { .. }));
         if !has_build {
-            self.genes.insert(0, Gene::Build(BuildGene::random()));
+            self.genes
+                .insert(0, Gene::Build((BuildGene::random(), BuildId::new())));
         }
     }
     pub fn get_start_gene(&self) -> (usize, &Gene) {
@@ -232,7 +296,7 @@ impl Genome {
 
 use std::fmt::Display;
 
-impl Display for Genome {
+impl Display for BodyPlan {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut depth = 0;
         for gene in &self.genes {
@@ -240,7 +304,7 @@ impl Display for Genome {
             let s = match gene {
                 Gene::Build(gene) => {
                     depth += 1;
-                    format!("Build {} {{", gene)
+                    format!("Build {} {{", gene.0)
                 }
                 Gene::Repeat => {
                     format!("Repeat")
