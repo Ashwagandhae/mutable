@@ -2,7 +2,9 @@ use int_enum::IntEnum;
 use nannou::prelude::*;
 use strum_macros::{EnumCount, EnumIter};
 
-use crate::model::world::math::sense_angle_diff;
+use crate::model::world::{chunks::TIDE_MULT, math::sense_angle_diff};
+
+use nannou::glam::Vec2;
 
 use super::{
     chunks::Chunk,
@@ -10,9 +12,11 @@ use super::{
     math::{is_zero_vec2, Angle},
 };
 
-// pub const LEAF_ENERGY_RATE: f32 = 0.000_08;
-pub const LEAF_ENERGY_RATE: f32 = 0.000_08;
+pub const LEAF_ENERGY_RATE: f32 = 0.000_16;
 pub const ENERGY_LOSS_RATE: f32 = 0.000_002;
+pub const MUSCLE_ENERGY_RATE: f32 = ENERGY_LOSS_RATE * 0.25;
+pub const JET_SPEED: f32 = 1.0;
+pub const JET_ENERGY_RATE: f32 = ENERGY_LOSS_RATE * 0.25;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, IntEnum, EnumIter, EnumCount)]
@@ -22,6 +26,17 @@ pub enum NodeKind {
     Mouth = 2,
     Spike = 3,
     Storage = 4,
+    Shell = 5,
+    Jet = 6,
+}
+
+impl NodeKind {
+    pub fn is_output(&self) -> bool {
+        matches!(self, NodeKind::Jet)
+    }
+    pub fn is_input(&self) -> bool {
+        false
+    }
 }
 
 #[repr(u8)]
@@ -153,8 +168,6 @@ impl Node {
         }
         self.accel = Vec2::new(0., 0.);
 
-        let max_energy = self.max_energy();
-
         match &mut self.life_state {
             LifeState::Alive {
                 ref mut age,
@@ -162,33 +175,17 @@ impl Node {
                 kind,
                 ref mut sense,
                 parent,
+                activate,
                 ..
             } => {
-                if let NodeKind::Leaf = kind {
-                    self.energy += LEAF_ENERGY_RATE * self.radius.powi(2) * chunk.sun;
-                }
-                match kind {
-                    NodeKind::Storage => {
-                        self.energy -= ENERGY_LOSS_RATE * self.radius.powi(3) * 0.25;
-                        if self.energy > max_energy * 4. {
-                            self.energy = max_energy * 4.;
-                        }
-                    }
-                    _ => {
-                        self.energy -= ENERGY_LOSS_RATE * self.radius.powi(3);
-                        if self.energy > max_energy {
-                            self.energy = max_energy;
-                        }
-                    }
-                }
-                // sense sunlight
+                let (max_energy, energy_change) = get_energy_change(self.radius, *kind, chunk);
                 if let Some((kind, ref mut sense)) = sense {
                     use SenseKind::*;
                     *sense = match kind {
                         Sun => chunk.sun,
-                        Energy => self.energy,
+                        Energy => self.energy / max_energy,
                         Age => *age as f32,
-                        TideSpeed => chunk.tide.length(),
+                        TideSpeed => (chunk.tide / TIDE_MULT).length() / 2.0.sqrt(),
                         TideAngle => parent
                             .map(|(_, a)| sense_angle_diff(a, Angle::from_vec2(chunk.tide)))
                             .unwrap_or(0.),
@@ -196,7 +193,12 @@ impl Node {
                         CollideAngle | CollideKind | CollideRadius | CollideSpeed => 0.,
                     }
                 }
-
+                if let (NodeKind::Jet, Some((_, angle))) = (kind, parent) {
+                    let jet_mult = JET_SPEED * activate.clamp(0.0, 5.0);
+                    self.accel += angle.to_vec2().normalize_or_zero() * jet_mult * -1.;
+                    self.energy -= JET_ENERGY_RATE * jet_mult;
+                }
+                self.energy = (self.energy + energy_change).min(max_energy);
                 *age += 1;
                 if self.energy < 0. || *age > *lifespan {
                     self.die();
@@ -267,5 +269,18 @@ impl Node {
             } => *activate = new_activate,
             LifeState::Dead { .. } => {}
         }
+    }
+}
+
+fn get_energy_change(radius: f32, kind: NodeKind, chunk: &Chunk) -> (f32, f32) {
+    let base_max_energy = radius.powi(3) / 50.0 * 16.;
+    let base_energy_change = -ENERGY_LOSS_RATE * radius.powi(3);
+    match kind {
+        NodeKind::Storage => (base_max_energy * 4., base_energy_change * 0.25),
+        NodeKind::Leaf => (
+            base_max_energy,
+            base_energy_change + LEAF_ENERGY_RATE * radius.powi(2) * chunk.sun,
+        ),
+        _ => (base_max_energy, base_energy_change),
     }
 }

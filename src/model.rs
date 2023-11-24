@@ -124,8 +124,10 @@ impl Model {
                 NodeKind::Leaf => rgb(0.5 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
                 NodeKind::Storage => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.5 + energy_mult),
                 NodeKind::Mouth => rgb(0.7 + energy_mult, 0.5 + energy_mult, 0.7 + energy_mult),
-                NodeKind::Spike => rgb(0.7 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
                 NodeKind::Egg => rgb(0.5 + energy_mult, 0.5 + energy_mult, 0.7 + energy_mult),
+                NodeKind::Spike => rgb(0.7 + energy_mult, 0.7 + energy_mult, 0.5 + energy_mult),
+                NodeKind::Shell => rgb(0.5 + energy_mult, 0.7 + energy_mult, 0.7 + energy_mult),
+                NodeKind::Jet => rgb(0.7 + energy_mult, 0.6 + energy_mult, 0.5 + energy_mult),
             },
             LifeState::Dead { .. } => rgb(0.5, 0.5, 0.5),
         };

@@ -196,6 +196,10 @@ where
     pub fn get_mut_slice(&mut self) -> &mut [Option<Item>] {
         &mut self.items[..]
     }
+
+    pub fn view(&mut self) -> CollectionView<Item> {
+        CollectionView { inner: self }
+    }
 }
 
 impl<Item> Index<GenId> for Collection<Item>
@@ -210,6 +214,61 @@ where
 }
 
 impl<Item> IndexMut<GenId> for Collection<Item>
+where
+    Item: Send,
+{
+    fn index_mut(&mut self, index: GenId) -> &mut Self::Output {
+        self.get_mut(index).unwrap()
+    }
+}
+
+/// A wrapper around a collection that guarantees no push or remove operations, but allows modification of the items.
+pub struct CollectionView<'a, Item>
+where
+    Item: Send,
+{
+    inner: &'a mut Collection<Item>,
+}
+
+impl<'a, Item> CollectionView<'a, Item>
+where
+    Item: Send,
+{
+    pub fn get(&self, id: GenId) -> Option<&Item> {
+        self.inner.get(id)
+    }
+    pub fn get_mut(&mut self, id: GenId) -> Option<&mut Item> {
+        self.inner.get_mut(id)
+    }
+    pub fn get_2_mut(
+        &mut self,
+        id_1: GenId,
+        id_2: GenId,
+    ) -> (Option<&mut Item>, Option<&mut Item>) {
+        self.inner.get_2_mut(id_1, id_2)
+    }
+
+    pub fn iter_with_ids(&self) -> impl Iterator<Item = (GenId, &Item)> {
+        self.inner.iter_with_ids()
+    }
+
+    pub fn get_mut_slice(&mut self) -> &mut [Option<Item>] {
+        self.inner.get_mut_slice()
+    }
+}
+
+impl<Item> Index<GenId> for CollectionView<'_, Item>
+where
+    Item: Send,
+{
+    type Output = Item;
+
+    fn index(&self, index: GenId) -> &Self::Output {
+        self.get(index).unwrap()
+    }
+}
+
+impl<Item> IndexMut<GenId> for CollectionView<'_, Item>
 where
     Item: Send,
 {

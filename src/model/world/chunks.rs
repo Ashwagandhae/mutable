@@ -16,6 +16,9 @@ pub struct Chunks {
     pub grid_size: (usize, usize),
     pub noise: (SuperSimplex, SuperSimplex),
 }
+// TODO add jet stream node
+// TODO add gene duplicating
+// TODO make energy transfer lossy
 impl Chunks {
     pub fn new(size: Vec2, cell_size: f32) -> Self {
         let grid_width = (size.x / cell_size).ceil() as usize;
@@ -27,17 +30,17 @@ impl Chunks {
                 tide: vec2(0., 0.),
             })
             .collect();
-        for _ in 0..8 {
-            // choose random sun position
-            let sun_pos: Point2 = (random_range(0., size.x), random_range(0., size.y)).into();
-            let sun_radius = size.x / 4.0;
-            for (y, x) in iproduct!(0..grid_height, 0..grid_width) {
-                let pos = vec2(x as f32 * cell_size, y as f32 * cell_size);
-                // sun is from 0 to 1
-                let sun = 1.0 - (sun_pos.distance(pos) / sun_radius).clamp(0.0, 1.0);
-                grid[y * grid_width + x].sun += sun;
-            }
-        }
+        // for _ in 0..8 {
+        //     // choose random sun position
+        //     let sun_pos: Point2 = (random_range(0., size.x), random_range(0., size.y)).into();
+        //     let sun_radius = size.x / 4.0;
+        //     for (y, x) in iproduct!(0..grid_height, 0..grid_width) {
+        //         let pos = vec2(x as f32 * cell_size, y as f32 * cell_size);
+        //         // sun is from 0 to 1
+        //         let sun = 1.0 - (sun_pos.distance(pos) / sun_radius).clamp(0.0, 1.0);
+        //         grid[y * grid_width + x].sun += sun;
+        //     }
+        // }
         // let middle = vec2(size.x / 2.0, size.y / 2.0);
         // for (y, x) in iproduct!(0..grid_height, 0..grid_width) {
         //     let pos = vec2(x as f32 * cell_size, y as f32 * cell_size);
@@ -57,7 +60,8 @@ impl Chunks {
             grid_size: (grid_width, grid_height),
             noise,
         };
-        ret.update(0);
+        ret.update_tide(0);
+        ret.update_sun();
         ret
     }
     pub fn get(&self, pos: Vec2) -> &Chunk {
@@ -67,7 +71,7 @@ impl Chunks {
             .clamp(0, self.grid_size.0 - 1);
         &self.grid[y * self.grid_size.0 + x]
     }
-    pub fn update(&mut self, tick: u64) {
+    pub fn update_tide(&mut self, tick: u64) {
         let cell_size = self.world_size.x / self.grid_size.0 as f32;
         let scale = 0.01;
         let time = tick as f64 * 0.005;
@@ -78,6 +82,27 @@ impl Chunks {
                 self.noise.1.get([pos.x as f64, pos.y as f64, time]) as f32,
             ) * TIDE_MULT;
             self.grid[y * self.grid_size.0 + x].tide = tide;
+        }
+    }
+    pub fn update_sun(&mut self) {
+        for (y, x) in iproduct!(0..self.grid_size.1, 0..self.grid_size.0) {
+            self.grid[y * self.grid_size.0 + x].sun = 0.;
+        }
+        let cell_size = self.world_size.x / self.grid_size.0 as f32;
+        for _ in 0..6 {
+            // choose random sun position
+            let sun_pos: Point2 = (
+                random_range(0., self.world_size.x),
+                random_range(0., self.world_size.y),
+            )
+                .into();
+            let sun_radius = self.world_size.x / 4.0;
+            for (y, x) in iproduct!(0..self.grid_size.1, 0..self.grid_size.0) {
+                let pos = vec2(x as f32 * cell_size, y as f32 * cell_size);
+                // sun is from 0 to 1
+                let sun = 1.0 - (sun_pos.distance(pos) / sun_radius).clamp(0.0, 1.0);
+                self.grid[y * self.grid_size.0 + x].sun += sun;
+            }
         }
     }
 }

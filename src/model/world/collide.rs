@@ -1,4 +1,4 @@
-use super::collection::Collection;
+use super::collection::CollectionView;
 use super::collection::GenId;
 use super::node::Node;
 use super::MAX_NODE_RADIUS;
@@ -36,7 +36,7 @@ impl Collider {
         let (x, y) = self.node_to_grid_pos(pos);
         y * self.grid_size.1 + x
     }
-    fn update(&mut self, nodes: &Collection<Node>) {
+    fn update(&mut self, nodes: &CollectionView<Node>) {
         for cell in &mut self.grid {
             cell.clear();
         }
@@ -80,7 +80,7 @@ impl Collider {
     #[allow(dead_code)]
     pub fn collide(
         &mut self,
-        nodes: &mut Collection<Node>,
+        nodes: &mut CollectionView<Node>,
         mut collide_fn: impl FnMut(&mut Node, &mut Node),
     ) {
         self.update(nodes);
@@ -103,7 +103,7 @@ impl Collider {
     }
     pub fn pos_collides_iter<'a>(
         &'a self,
-        nodes: &'a Collection<Node>,
+        nodes: &'a CollectionView<Node>,
         pos: Point2,
     ) -> impl Iterator<Item = &Node> + 'a {
         let (x, y) = self.node_to_grid_pos(pos);
@@ -131,47 +131,24 @@ use rayon::prelude::*;
 impl Collider {
     pub fn par_collide(
         &mut self,
-        nodes: &mut Collection<Node>,
+        nodes: &mut CollectionView<Node>,
         collide_fn: fn(&mut Node, &mut Node),
     ) {
         self.update(nodes);
-        let nodes_slice = sync_mut_vec::UnsafeMutSlice::new(nodes.get_mut_slice());
+        let nodes_slice = super::sync_mut::UnsafeMutSlice::new(nodes.get_mut_slice());
         let even_rows_iter = (0..self.grid_size.1).into_par_iter().step_by(2);
         let odd_rows_iter = (1..self.grid_size.1).into_par_iter().step_by(2);
         let collide = |y| {
             for x in 0..self.grid_size.0 {
-                self.collide_cells(x, y, &[(1, 0), (-1, 1), (0, 1), (1, 1)]).for_each(|(id_1, id_2)| {
-                    let Some(node_1) = (unsafe { nodes_slice.get_mut(id_1.index) }) else {return}; // TODO revert this
-                    let Some(node_2) = (unsafe { nodes_slice.get_mut(id_2.index) }) else {return};
-                    collide_fn(node_1, node_2);
-                });
+                self.collide_cells(x, y, &[(1, 0), (-1, 1), (0, 1), (1, 1)])
+                    .for_each(|(id_1, id_2)| {
+                        let Some(node_1) = (unsafe { nodes_slice.get(id_1.index) }) else {return}; // TODO revert this
+                        let Some(node_2) = (unsafe { nodes_slice.get(id_2.index) }) else {return};
+                        collide_fn(node_1, node_2);
+                    });
             }
         };
         even_rows_iter.for_each(collide);
         odd_rows_iter.for_each(collide);
     }
-}
-
-mod sync_mut_vec {
-    use std::cell::UnsafeCell;
-
-    pub struct UnsafeMutSlice<'a, T> {
-        slice: UnsafeCell<&'a mut [T]>,
-    }
-    impl<'a, T> UnsafeMutSlice<'a, T> {
-        /// # Safety
-        /// The caller must ensure that no two threads modify the same index at the same time.
-        #[allow(clippy::mut_from_ref)]
-        pub unsafe fn get_mut(&self, index: usize) -> &mut T {
-            let slice = unsafe { &mut *self.slice.get() };
-            &mut slice[index]
-        }
-        pub fn new(slice: &'a mut [T]) -> Self {
-            Self {
-                slice: UnsafeCell::new(slice),
-            }
-        }
-    }
-
-    unsafe impl<'a, T> Sync for UnsafeMutSlice<'a, T> {}
 }

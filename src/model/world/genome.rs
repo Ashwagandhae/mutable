@@ -2,6 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use super::brain::BrainPlan;
 use super::gene::BodyPlan;
+use nannou::prelude::random;
 
 #[derive(Debug, Clone)]
 pub struct Genome {
@@ -16,8 +17,15 @@ impl Genome {
         Genome { body, brain }
     }
     pub fn mutate(&mut self) {
-        self.body.mutate(&mut self.brain);
-        self.brain.mutate();
+        let r = random::<f32>();
+        if r < 0.5 {
+            self.body.mutate(&mut self.brain);
+            self.brain.mutate();
+        } else if r < 0.75 {
+            self.body.mutate(&mut self.brain);
+        } else {
+            self.brain.mutate();
+        }
     }
 }
 

@@ -1,4 +1,3 @@
-use int_enum::IntEnum;
 use nannou::prelude::*;
 
 mod bone;
@@ -13,6 +12,7 @@ mod math;
 mod muscle;
 pub mod node;
 pub mod organism;
+mod sync_mut;
 
 use bone::Bone;
 use chunks::Chunks;
@@ -34,6 +34,12 @@ use self::math::{is_zero_vec2, vel_towards};
 pub const MAX_NODE_RADIUS: f32 = 15.0;
 const SPLAT_RADIUS_DELTA: f32 = 0.6;
 const SPLAT_MIN_RADIUS: f32 = 2.0;
+
+fn every(ticks: u64, tick: u64, run: impl FnOnce()) {
+    if tick % ticks == 0 {
+        run();
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct World {
@@ -75,21 +81,17 @@ impl World {
         }
     }
     pub fn update(&mut self) {
+        self.update_nodes();
         self.update_bones();
-
         self.update_muscles();
 
-        self.update_nodes();
-
         self.think_organsims();
+        every(32, self.tick, || self.reproduce_organisms());
+        every(64, self.tick, || self.grow_organisms());
+        every(128, self.tick, || self.clear_dead_organisms());
 
-        if self.tick % 64 == 0 {
-            self.grow_organisms();
-        }
-
-        if self.tick % 16 == 0 {
-            self.chunks.update(self.tick);
-        }
+        every(16, self.tick, || self.chunks.update_tide(self.tick));
+        every(16384, self.tick, || self.chunks.update_sun());
 
         if self.nodes.iter().all(|node| !node.is_alive()) {
             println!("All nodes dead");
@@ -106,13 +108,13 @@ impl World {
     }
     fn update_bones(&mut self) {
         for bone in self.bones.iter_mut() {
-            bone.update(&mut self.nodes, &self.chunks);
+            bone.update(&mut self.nodes.view());
         }
         self.bones.retain(|bone| !bone.delete);
     }
     fn update_muscles(&mut self) {
         for muscle in self.muscles.iter_mut() {
-            muscle.update(&mut self.nodes);
+            muscle.update(&mut self.nodes.view());
         }
         self.muscles.retain(|muscle| !muscle.delete);
     }
@@ -178,7 +180,8 @@ impl World {
         self.nodes.retain(|node| !node.delete);
 
         // collide nodes with collider
-        self.collider.par_collide(&mut self.nodes, collide_pair);
+        self.collider
+            .par_collide(&mut self.nodes.view(), collide_pair);
 
         // keep nodes in bounds
         for node in self.nodes.iter_mut() {
@@ -193,22 +196,30 @@ impl World {
     }
 
     fn think_organsims(&mut self) {
-        for organism in self.organisms.iter_mut() {
-            organism.think(&mut self.nodes, self.tick);
-        }
+        let view = sync_mut::UnsafeMut::new(self.nodes.view());
+        self.organisms.par_iter_mut().for_each(|organism| {
+            // this is safe because no 2 organisms share nodes
+            let view = unsafe { view.get() };
+            organism.think(view, self.tick);
+        });
     }
     fn grow_organisms(&mut self) {
+        for organism in self.organisms.iter_mut() {
+            organism.grow(&mut self.nodes, &mut self.bones, &mut self.muscles);
+        }
+    }
+    fn reproduce_organisms(&mut self) {
         let mut new_organisms = Vec::new();
         for organism in self.organisms.iter_mut() {
-            organism.grow(
-                &mut self.nodes,
-                &mut self.bones,
-                &mut self.muscles,
-                &self.collider,
-            );
+            organism.reproduce(&mut self.nodes, &self.collider);
             new_organisms.append(&mut organism.new_organisms);
         }
         self.organisms.extend(&mut new_organisms);
+    }
+    fn clear_dead_organisms(&mut self) {
+        self.organisms.par_iter_mut().for_each(|organism| {
+            organism.clear_dead(&self.nodes);
+        });
         self.organisms.retain(|organism| !organism.delete);
     }
 }
@@ -297,27 +308,27 @@ fn sense_pair(actor: &mut Node, object: &Node) {
     let pos = actor.pos();
     match &mut actor.life_state {
         LifeState::Alive {
-            sense: Some((kind, ref mut value)),
+            sense: Some((sense_kind, ref mut value)),
             parent,
+            kind,
             ..
         } => {
             use SenseKind::*;
             // must handle all Collide... variants
-            let new_value = match kind {
+            let new_value = match sense_kind {
                 CollideAngle => {
                     let angle = Angle::from_vec2(pos - object.pos());
                     parent
                         .map(|(_, a)| sense_angle_diff(a, angle))
                         .unwrap_or(0.)
                 }
-                CollideKind => {
-                    if object.is_alive() {
-                        object.unwrap_kind().int_value() as f32
-                    } else {
-                        -1.0
-                    }
-                }
-                CollideRadius => object.radius,
+                CollideKind => match object.life_state {
+                    LifeState::Alive {
+                        kind: other_kind, ..
+                    } if other_kind == *kind => 1.0,
+                    _ => -1.0,
+                },
+                CollideRadius => object.radius / MAX_NODE_RADIUS,
                 CollideSpeed => vel_towards(pos, actor.vel, object.pos(), object.vel),
                 _ => return, // if not a collide sense, its handled elsewhere so return
             };
@@ -348,6 +359,13 @@ fn interact_pair(actor: &mut Node, object: &mut Node) {
                     return;
                 }
                 if object.radius < SPLAT_MIN_RADIUS / SPLAT_RADIUS_DELTA {
+                    return;
+                }
+                if let LifeState::Alive {
+                    kind: NodeKind::Shell,
+                    ..
+                } = object.life_state
+                {
                     return;
                 }
                 object.splat = true;

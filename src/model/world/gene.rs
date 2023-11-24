@@ -25,7 +25,7 @@ make_gene_struct!(pub BuildGene {
     bone_length: f32 = 5.0..30.0,
 
     has_muscle: u8 = 0..2,
-    muscle_angle: f32 = 0.0..TAU,
+    muscle_length: f32 = 5.0..30.0,
     muscle_strength: f32 = 0.5..2.0,
     muscle_has_movement: u8 = 0..2,
     muscle_is_sibling: u8 = 0..2,
@@ -76,14 +76,9 @@ impl BuildGene {
         if self.has_muscle == 0 {
             return None;
         }
-        let angle = Angle(self.muscle_angle);
+        let length = self.muscle_length;
         let strength = self.muscle_strength;
-        // let movement = if self.muscle_has_movement == 0 {
-        //     None
-        // } else {
-        //     Some((self.muscle_freq, self.muscle_amp, self.muscle_shift))
-        // };
-        Some(Muscle::new(joint_id, node_1, node_2, angle, strength))
+        Some(Muscle::new(joint_id, node_1, node_2, length, strength))
     }
 
     pub fn energy_cost(&self) -> f32 {
@@ -185,8 +180,8 @@ impl BodyPlan {
         let leaf_gene = Gene::Build((leaf, leaf_id.clone()));
         let egg_gene = Gene::Build((egg, egg_id.clone()));
 
-        brain.mutate_gene(&leaf_gene, Mutation::Add);
-        brain.mutate_gene(&egg_gene, Mutation::Add);
+        brain.mutate_gene(Mutation::Add, &leaf_gene);
+        brain.mutate_gene(Mutation::Add, &egg_gene);
 
         genes.push(leaf_gene);
         genes.push(egg_gene);
@@ -196,27 +191,30 @@ impl BodyPlan {
         ret
     }
     pub fn mutate(&mut self, brain: &mut BrainPlan) {
-        let mutation_count = random_range(1, self.genes.len() / 5 + 2);
+        let mutation_count = random_range(1, 4);
         for _ in 0..mutation_count {
-            let i = random_range(0, self.genes.len());
-            let mutation = Mutation::random();
+            let (i, mutation) = match self.genes.len() {
+                0 => (0, Mutation::Add),
+                _ => (random_range(0, self.genes.len()), Mutation::random()),
+            };
+
             match mutation {
                 Mutation::Add => {
                     let new_gene = Gene::random();
-                    brain.mutate_gene(&new_gene, mutation);
+                    brain.mutate_gene(mutation, &new_gene);
                     self.genes.insert(i, new_gene);
                 }
                 Mutation::Delete => {
                     let rem_gene = self.genes.remove(i);
-                    brain.mutate_gene(&rem_gene, mutation);
+                    brain.mutate_gene(mutation, &rem_gene);
                 }
                 Mutation::Edit => {
                     self.genes[i].mutate_one();
-                    brain.mutate_gene(&self.genes[i], mutation);
+                    brain.mutate_gene(mutation, &self.genes[i]);
                 }
                 Mutation::EditGradual => {
                     self.genes[i].mutate_one_gradual();
-                    brain.mutate_gene(&self.genes[i], mutation);
+                    brain.mutate_gene(mutation, &self.genes[i]);
                 }
             };
         }
@@ -226,6 +224,7 @@ impl BodyPlan {
     pub fn get(&self, index: usize) -> Option<&Gene> {
         self.genes.get(index)
     }
+    /// will only return Build and Repeat genes
     pub fn get_next(&self, index: usize) -> Option<usize> {
         let mut depth = match self.genes[index] {
             Gene::Build(_) => 1,
@@ -255,7 +254,8 @@ impl BodyPlan {
         }
         None
     }
-    pub fn get_next_non_repeat(&self, index: usize) -> Option<usize> {
+    /// will only return Build genes, obviously not Repeat, and Up is removed due to get_next
+    fn get_next_non_repeat(&self, index: usize) -> Option<usize> {
         let mut ret = self.get_next(index);
         while ret.is_some() && matches!(self.genes[ret.unwrap()], Gene::Repeat) {
             ret = self.get_next(ret.unwrap());
@@ -271,6 +271,26 @@ impl BodyPlan {
                 Gene::Up => None,
             })
             .flatten()
+    }
+    pub fn get_build(&self, index: usize) -> Option<(usize, &(BuildGene, BuildId))> {
+        self.get(index).and_then(|real_gene| {
+            match real_gene {
+                // if its repeat, try to find first non repeat gene (that's what it's repeating)
+                Gene::Repeat => {
+                    self.get_next_non_repeat(index)
+                        .map(|build_index| {
+                            self.get(build_index).map(|gene| {
+                                // gauranteed to be Build because of get_next_non_repeat
+                                let Gene::Build(gene) = gene else { unreachable!() };
+                                (build_index, gene)
+                            })
+                        })
+                        .flatten()
+                }
+                Gene::Build(gene) => Some((index, gene)),
+                Gene::Up => unreachable!(),
+            }
+        })
     }
     fn make_valid(&mut self) {
         let has_build = self
