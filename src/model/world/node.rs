@@ -53,6 +53,15 @@ pub enum SenseKind {
     CollideKind = 6,
     CollideRadius = 7,
     CollideSpeed = 8,
+
+    Eye = 9,
+}
+
+/// SenseCalculate determines whether you calculate the sense or skip it, based on if the brain actually has outputs. It is an optimization and should not affect the simulation.
+#[derive(Debug, Clone)]
+pub enum SenseCalculate {
+    Skip,
+    Calculate(f32),
 }
 
 #[derive(Debug, Clone)]
@@ -65,7 +74,7 @@ pub enum LifeState {
         energy_weight: f32,
         lifespan: u32,
 
-        sense: Option<(SenseKind, f32)>,
+        sense: Option<(SenseKind, SenseCalculate)>,
         activate: f32,
     },
     Dead {
@@ -97,7 +106,7 @@ impl Node {
         gene_index: Option<usize>,
         parent: Option<(GenId, Angle)>,
         lifespan: u32,
-        sense_kind: Option<SenseKind>,
+        sense_kind: Option<(SenseKind, bool)>,
     ) -> Node {
         Node {
             pos,
@@ -113,7 +122,16 @@ impl Node {
                 energy_weight,
                 lifespan,
 
-                sense: sense_kind.map(|sense| (sense, 0.)),
+                sense: sense_kind.map(|(sense, should_calculate)| {
+                    (
+                        sense,
+                        if should_calculate {
+                            SenseCalculate::Calculate(0.)
+                        } else {
+                            SenseCalculate::Skip
+                        },
+                    )
+                }),
                 activate: 0.,
             },
 
@@ -179,7 +197,7 @@ impl Node {
                 ..
             } => {
                 let (max_energy, energy_change) = get_energy_change(self.radius, *kind, chunk);
-                if let Some((kind, ref mut sense)) = sense {
+                if let Some((kind, SenseCalculate::Calculate(ref mut sense))) = sense {
                     use SenseKind::*;
                     *sense = match kind {
                         Sun => chunk.sun,
@@ -190,7 +208,7 @@ impl Node {
                             .map(|(_, a)| sense_angle_diff(a, Angle::from_vec2(chunk.tide)))
                             .unwrap_or(0.),
                         // handled by collider
-                        CollideAngle | CollideKind | CollideRadius | CollideSpeed => 0.,
+                        CollideAngle | CollideKind | CollideRadius | CollideSpeed | Eye => 0.,
                     }
                 }
                 if let (NodeKind::Jet, Some((_, angle))) = (kind, parent) {
@@ -257,8 +275,11 @@ impl Node {
         }
     }
     pub fn sense(&self) -> Option<f32> {
-        match self.life_state {
-            LifeState::Alive { ref sense, .. } => sense.map(|(_, sense)| sense),
+        match &self.life_state {
+            LifeState::Alive { sense, .. } => sense.as_ref().and_then(|(_, sense)| match sense {
+                SenseCalculate::Calculate(sense) => Some(*sense),
+                SenseCalculate::Skip => None,
+            }),
             LifeState::Dead { .. } => None,
         }
     }

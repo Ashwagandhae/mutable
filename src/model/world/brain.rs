@@ -289,14 +289,14 @@ impl BrainPlan {
 
     fn add_input(&mut self, id: BuildId) {
         let index = self.neurons.add_input(id);
-        if random::<f32>() > 0.5 {
+        if random::<f32>() > 0.75 {
             self.add_random_connect(Some(ConnectSource::Neuron(index)), None);
         }
     }
 
     fn add_output(&mut self, id: BuildId) {
         let index = self.neurons.add_output(id);
-        if random::<f32>() > 0.5 {
+        if random::<f32>() > 0.75 {
             self.add_random_connect(None, Some(index));
         }
     }
@@ -340,7 +340,7 @@ impl BrainPlan {
         let from = match from {
             Some(source) => source,
             None => {
-                if random::<f32>() > 0.3 {
+                if random::<f32>() > 0.4 {
                     let Some(index) = self.neurons.random_index(&[Input, Synth, Hidden]) else { return };
                     ConnectSource::Neuron(index)
                 } else {
@@ -571,6 +571,13 @@ impl Brain {
         }
         // neurons use 1/8 of a node's energy
         cost
+    }
+
+    pub fn does_calculate_neurons(&self) -> bool {
+        match &self.neurons {
+            NeuronCalculate::Skip => false,
+            NeuronCalculate::Calculate(_) => true,
+        }
     }
 }
 

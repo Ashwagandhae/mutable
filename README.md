@@ -1,6 +1,6 @@
 # Mutable
 
-An evolution simulator written in Rust. Currently proof of concept - muscle movement is based on simple sine waves, not brain activity, organisms can't sense their surroundings, and breeding is unimplemented. However, the evolution of plants, detritivores, and sometimes herbivores has already been observed.
+An evolution simulator written in Rust. Each organism is represented as a tree of different nodes with different jobs, and can use those nodes to sense events in the world and react to them with a neural network. The evolution of plants, detritivores, and herbivores has been observed.
 
 Inspired by and based on:
 

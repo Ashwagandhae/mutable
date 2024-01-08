@@ -4,7 +4,7 @@ mod bone;
 mod brain;
 pub mod chunks;
 pub mod collection;
-mod collide;
+pub mod collide;
 pub mod gene;
 pub mod genome;
 mod init;
@@ -13,6 +13,7 @@ mod muscle;
 pub mod node;
 pub mod organism;
 mod sync_mut;
+pub mod tag;
 
 use bone::Bone;
 use chunks::Chunks;
@@ -29,7 +30,10 @@ use rayon::prelude::ParallelIterator;
 
 use crate::model::world::{math::sense_angle_diff, node::SenseKind};
 
-use self::math::{is_zero_vec2, vel_towards};
+use self::{
+    math::{is_zero_vec2, vel_towards},
+    node::SenseCalculate,
+};
 
 pub const MAX_NODE_RADIUS: f32 = 15.0;
 const SPLAT_RADIUS_DELTA: f32 = 0.6;
@@ -183,6 +187,32 @@ impl World {
         self.collider
             .par_collide(&mut self.nodes.view(), collide_pair);
 
+        // let eye nodes see
+        for i in 0..self.nodes.full_len() {
+            let Some(node) = self.nodes.get_index(i) else {continue};
+            let LifeState::Alive {
+                sense: Some((SenseKind::Eye, SenseCalculate::Calculate(_))),
+                parent: Some((_, angle)),
+                ..
+            } = node.life_state else {continue};
+            let origin = node.pos();
+            let vision = node.radius * 10.0;
+            let dir = angle.to_vec2().normalize_or_zero() * -1. * vision;
+            let Some(seen_node) = self
+                .collider
+                .ray_collides_iter(&self.nodes, origin, dir)
+                .find(|node| ray_collides_circle(origin, dir, node.pos(), node.radius)) else {continue};
+            let dist = origin.distance(seen_node.pos());
+            let Some(Node{
+                life_state: LifeState::Alive {
+                    sense: Some((_, SenseCalculate::Calculate(ref mut sense))),
+                    ..
+                },
+                ..
+            }) = self.nodes.get_index_mut(i) else {unreachable!()};
+            *sense = 1.0 - dist / vision;
+        }
+
         // keep nodes in bounds
         for node in self.nodes.iter_mut() {
             if node.pos().x < 0.0
@@ -308,7 +338,7 @@ fn sense_pair(actor: &mut Node, object: &Node) {
     let pos = actor.pos();
     match &mut actor.life_state {
         LifeState::Alive {
-            sense: Some((sense_kind, ref mut value)),
+            sense: Some((sense_kind, SenseCalculate::Calculate(ref mut value))),
             parent,
             kind,
             ..
@@ -351,7 +381,7 @@ fn interact_pair(actor: &mut Node, object: &mut Node) {
                 object.delete = true;
             }
             NodeKind::Spike => {
-                let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 1.0;
+                let vel_threshold = object.radius.powi(2) / actor.radius.powi(2) * 0.125;
                 // get vel towards object and compare to threshold
                 let vel_towards_object =
                     vel_towards(actor.pos(), actor.vel, object.pos(), object.vel);
@@ -374,4 +404,25 @@ fn interact_pair(actor: &mut Node, object: &mut Node) {
         },
         _ => {}
     }
+}
+
+fn ray_collides_circle(origin: Point2, dir: Vec2, center: Point2, radius: f32) -> bool {
+    let diff = origin - center;
+    let a = dir.dot(dir);
+    let b = 2.0 * diff.dot(dir);
+    let c = diff.dot(diff) - radius.powi(2);
+    let discriminant = b.powi(2) - 4.0 * a * c;
+    if discriminant < 0.0 {
+        return false;
+    }
+    let discriminant_sqrt = discriminant.sqrt();
+    let t1 = (-b - discriminant_sqrt) / (2.0 * a);
+    let t2 = (-b + discriminant_sqrt) / (2.0 * a);
+    if t1 >= 0.0 && t1 <= 1.0 {
+        return true;
+    }
+    if t2 >= 0.0 && t2 <= 1.0 {
+        return true;
+    }
+    false
 }

@@ -39,6 +39,10 @@ macro_rules! make_gene_struct {
                         self.$var -= ($upper as $ty - $lower as $ty) / 10 as $ty;
                     }
                     self.$var= self.$var.clamp($lower as $ty, $upper as $ty);
+                    // make range exclusive
+                    if self.$var == $upper as $ty {
+                        self.$var = random_range($lower as $ty, $upper as $ty);
+                    }
                     return;
                 } else {
                     threshold += delta;

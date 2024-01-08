@@ -40,6 +40,7 @@ impl BuildGene {
         gene_index: Option<usize>,
         energy: f32,
         parent: Option<(GenId, Point2)>,
+        sense_calculate: bool,
     ) -> Node {
         let kind = NodeKind::from_int(self.node_kind).unwrap();
         let energy_weight = self.node_energy_weight;
@@ -48,9 +49,11 @@ impl BuildGene {
         let sense_kind = if self.has_sense == 0 {
             None
         } else {
-            Some(SenseKind::from_int(self.sense_kind).unwrap())
+            Some((
+                SenseKind::from_int(self.sense_kind).unwrap(),
+                sense_calculate,
+            ))
         };
-
         let parent = parent.map(|(id, parent_pos)| {
             let angle = Angle::from_vec2(pos - parent_pos);
             (id, angle)
@@ -170,9 +173,9 @@ impl BodyPlan {
         let mut genes = Vec::new();
 
         let mut leaf = BuildGene::random();
-        leaf.node_kind = 1;
+        leaf.node_kind = NodeKind::Leaf as u8;
         let mut egg = BuildGene::random();
-        egg.node_kind = 0;
+        egg.node_kind = NodeKind::Egg as u8;
 
         let leaf_id = BuildId::new();
         let egg_id = BuildId::new();
@@ -188,8 +191,41 @@ impl BodyPlan {
 
         let mut ret = BodyPlan { genes };
         ret.mutate(brain);
+
         ret
     }
+
+    // pub fn random_animal(brain: &mut BrainPlan) -> BodyPlan {
+    //     let mut genes = Vec::new();
+
+    //     let mut mouth = BuildGene::random();
+    //     mouth.node_kind = NodeKind::Mouth as u8;
+    //     let mut egg = BuildGene::random();
+    //     egg.node_kind = NodeKind::Egg as u8;
+    //     let mut jet = BuildGene::random();
+    //     jet.node_kind = NodeKind::Jet as u8;
+
+    //     let mouth_id = BuildId::new();
+    //     let egg_id = BuildId::new();
+    //     let jet_id = BuildId::new();
+
+    //     let mouth_gene = Gene::Build((mouth, mouth_id.clone()));
+    //     let egg_gene = Gene::Build((egg, egg_id.clone()));
+    //     let jet_gene = Gene::Build((jet, jet_id.clone()));
+
+    //     brain.mutate_gene(Mutation::Add, &mouth_gene);
+    //     brain.mutate_gene(Mutation::Add, &egg_gene);
+    //     brain.mutate_gene(Mutation::Add, &jet_gene);
+
+    //     genes.push(mouth_gene);
+    //     genes.push(egg_gene);
+    //     genes.push(jet_gene);
+
+    //     let mut ret = BodyPlan { genes };
+    //     ret.mutate(brain);
+
+    //     ret
+    // }
     pub fn mutate(&mut self, brain: &mut BrainPlan) {
         let mutation_count = random_range(1, 4);
         for _ in 0..mutation_count {

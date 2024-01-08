@@ -69,8 +69,9 @@ impl Organism {
         let (index, gene) = genome.body.get_start_gene();
         let Gene::Build((gene, _)) = gene else { unreachable!() };
         let index = genome.body.get_next_deeper(index);
-        let node_id = nodes.push(gene.build_node(pos, index, energy, None));
         let brain = Brain::from_plan(&genome.brain);
+        let node_id =
+            nodes.push(gene.build_node(pos, index, energy, None, brain.does_calculate_neurons()));
         Organism {
             genome,
             brain,
@@ -155,6 +156,7 @@ impl Organism {
             child_gene_index,
             gene.starting_energy,
             Some((node_id, nodes[node_id].pos())),
+            self.brain.does_calculate_neurons(),
         ));
         self.node_ids.push(child_id);
         self.build_id_map.insert(build_id.clone(), child_id);
@@ -194,7 +196,7 @@ impl Organism {
         // save genome for child, so that high energy cost genes aren't deleted
         self.next_child_genome.get_or_insert_with(|| {
             let mut new_genome = self.genome.clone();
-            if random::<f32>() < 0.25 {
+            if random::<f32>() < 0.5 {
                 new_genome.mutate();
             }
             new_genome

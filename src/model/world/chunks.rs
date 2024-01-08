@@ -24,7 +24,7 @@ impl Chunks {
         let grid_width = (size.x / cell_size).ceil() as usize;
         let grid_height = (size.y / cell_size).ceil() as usize;
 
-        let mut grid: Vec<_> = iproduct!(0..grid_height, 0..grid_width)
+        let grid: Vec<_> = iproduct!(0..grid_height, 0..grid_width)
             .map(|_| Chunk {
                 sun: 0.,
                 tide: vec2(0., 0.),
