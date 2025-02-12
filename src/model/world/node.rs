@@ -1,5 +1,6 @@
 use int_enum::IntEnum;
 use nannou::prelude::*;
+use serde::{Deserialize, Serialize};
 use strum_macros::{EnumCount, EnumIter};
 
 use crate::model::world::{chunks::TIDE_MULT, math::sense_angle_diff};
@@ -19,7 +20,9 @@ pub const JET_SPEED: f32 = 1.0;
 pub const JET_ENERGY_RATE: f32 = ENERGY_LOSS_RATE * 0.25;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq, IntEnum, EnumIter, EnumCount)]
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, IntEnum, EnumIter, EnumCount, Serialize, Deserialize,
+)]
 pub enum NodeKind {
     Egg = 0,
     Leaf = 1,
@@ -40,7 +43,9 @@ impl NodeKind {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq, IntEnum, EnumIter, EnumCount)]
+#[derive(
+    Debug, Clone, Copy, Eq, PartialEq, IntEnum, EnumIter, EnumCount, Serialize, Deserialize,
+)]
 pub enum SenseKind {
     Sun = 0,
     Energy = 1,
@@ -58,13 +63,13 @@ pub enum SenseKind {
 }
 
 /// SenseCalculate determines whether you calculate the sense or skip it, based on if the brain actually has outputs. It is an optimization and should not affect the simulation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SenseCalculate {
     Skip,
     Calculate(f32),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LifeState {
     Alive {
         kind: NodeKind,
@@ -82,7 +87,7 @@ pub enum LifeState {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pos: Point2,
     pub radius: f32,

@@ -1,8 +1,9 @@
 use itertools::iproduct;
 use nannou::prelude::*;
 use noise::{NoiseFn, SuperSimplex};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk {
     pub sun: f32,
     pub tide: Vec2,
@@ -10,12 +11,26 @@ pub struct Chunk {
 pub const TIDE_MULT: f32 = 0.05;
 
 #[derive(Debug, Clone)]
+pub struct Tide(SuperSimplex, SuperSimplex);
+
+impl Default for Tide {
+    fn default() -> Self {
+        Self(
+            SuperSimplex::new(random_range(0, 20)),
+            SuperSimplex::new(random_range(20, 40)),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunks {
     pub grid: Vec<Chunk>,
     pub world_size: Vec2,
     pub grid_size: (usize, usize),
-    pub noise: (SuperSimplex, SuperSimplex),
+    #[serde(skip)]
+    pub noise: Tide,
 }
+
 // TODO add jet stream node
 // TODO add gene duplicating
 // TODO make energy transfer lossy
@@ -49,16 +64,11 @@ impl Chunks {
         //     grid[y * grid_width + x].tide = tide * TIDE_MULT;
         // }
 
-        let noise = (
-            SuperSimplex::new(random_range(0, 20)),
-            SuperSimplex::new(random_range(20, 40)),
-        );
-
         let mut ret = Chunks {
             grid,
             world_size: size,
             grid_size: (grid_width, grid_height),
-            noise,
+            noise: Tide::default(),
         };
         ret.update_tide(0);
         ret.update_sun();

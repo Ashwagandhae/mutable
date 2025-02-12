@@ -1,5 +1,6 @@
 use nannou::rand::random_range;
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Tag([f32; 16]);
 
 impl Tag {

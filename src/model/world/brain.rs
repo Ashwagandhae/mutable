@@ -7,14 +7,15 @@ use super::{
 };
 use int_enum::IntEnum;
 use rand::random;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize)]
 enum ConnectSource {
     Neuron(NeuronsIndex),
     Bias,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Connect {
     from: ConnectSource,
     to: NeuronsIndex,
@@ -22,13 +23,13 @@ pub struct Connect {
     enabled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize)]
 struct NeuronsIndex {
     index: usize,
     kind: NeuronsIndexKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 enum NeuronsIndexKind {
     Input,
     Synth,
@@ -36,7 +37,7 @@ enum NeuronsIndexKind {
     Hidden,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Neurons {
     inputs: Vec<NeuronKind>,
     synths: Vec<NeuronKind>,
@@ -196,13 +197,13 @@ impl Neurons {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrainPlan {
     neurons: Neurons,
     connects: Vec<Connect>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Neuron {
     value: f32,
     prev_value: f32,
@@ -218,7 +219,7 @@ fn activate_output(x: f32) -> f32 {
     x
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NeuronKind {
     Input(BuildId),
     Synth { amp: f32, freq: f32 },
@@ -310,7 +311,10 @@ impl BrainPlan {
                     NeuronKind::Input(neuron_id) => *neuron_id == id,
                     _ => false,
                 })
-                .map(|(index, _)| index) else { break };
+                .map(|(index, _)| index)
+            else {
+                break;
+            };
             self.delete_neuron(delete_neuron_index);
         }
     }
@@ -324,7 +328,10 @@ impl BrainPlan {
                     NeuronKind::Output(neuron_id) => *neuron_id == id,
                     _ => false,
                 })
-                .map(|(index, _)| index) else { break };
+                .map(|(index, _)| index)
+            else {
+                break;
+            };
             self.delete_neuron(delete_neuron_index);
         }
     }
@@ -341,7 +348,9 @@ impl BrainPlan {
             Some(source) => source,
             None => {
                 if random::<f32>() > 0.4 {
-                    let Some(index) = self.neurons.random_index(&[Input, Synth, Hidden]) else { return };
+                    let Some(index) = self.neurons.random_index(&[Input, Synth, Hidden]) else {
+                        return;
+                    };
                     ConnectSource::Neuron(index)
                 } else {
                     ConnectSource::Bias
@@ -476,13 +485,13 @@ impl Display for BrainPlan {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum NeuronCalculate {
     Skip,
     Calculate(Vec<Neuron>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Brain {
     neurons: NeuronCalculate,
 }

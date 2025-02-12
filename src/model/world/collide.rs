@@ -6,7 +6,7 @@ use itertools::{iproduct, Itertools};
 use nannou::prelude::*;
 
 pub const CELL_SIZE: f32 = MAX_NODE_RADIUS * 2.0;
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Collider {
     pub grid: Vec<Vec<GenId>>,
     pub world_size: Vec2,
@@ -87,18 +87,25 @@ impl Collider {
     ) {
         self.update(nodes);
         for (x, y) in iproduct!(0..self.grid_size.0, 0..self.grid_size.1) {
-            self.collide_cells(x, y, &[
-                // (-1, -1) exclude because its covered by the last cell's (1, 1).
-                // (0, -1) exclude because its covered by the last cell's (0, 1).
-                // there's no need to check it ever because the first cell ignores out of border cells.
-                // (1, -1),
-                // (-1, 0) exclude because its covered by the last cell's (1, 0).
-                (1, 0),
-                (-1, 1),
-                (0, 1),
-                (1, 1),
-            ]).for_each(|(id_1, id_2)| {
-                let (Some(node_1), Some(node_2)) = nodes.get_2_mut(id_1, id_2) else {unreachable!()};
+            self.collide_cells(
+                x,
+                y,
+                &[
+                    // (-1, -1) exclude because its covered by the last cell's (1, 1).
+                    // (0, -1) exclude because its covered by the last cell's (0, 1).
+                    // there's no need to check it ever because the first cell ignores out of border cells.
+                    // (1, -1),
+                    // (-1, 0) exclude because its covered by the last cell's (1, 0).
+                    (1, 0),
+                    (-1, 1),
+                    (0, 1),
+                    (1, 1),
+                ],
+            )
+            .for_each(|(id_1, id_2)| {
+                let (Some(node_1), Some(node_2)) = nodes.get_2_mut(id_1, id_2) else {
+                    unreachable!()
+                };
                 collide_fn(node_1, node_2);
             })
         }
@@ -265,6 +272,7 @@ impl Collider {
     }
 }
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 impl Collider {
     pub fn par_collide(
@@ -280,8 +288,12 @@ impl Collider {
             for x in 0..self.grid_size.0 {
                 self.collide_cells(x, y, &[(1, 0), (-1, 1), (0, 1), (1, 1)])
                     .for_each(|(id_1, id_2)| {
-                        let Some(node_1) = (unsafe { nodes_slice.get(id_1.index) }) else {return}; // TODO revert this
-                        let Some(node_2) = (unsafe { nodes_slice.get(id_2.index) }) else {return};
+                        let Some(node_1) = (unsafe { nodes_slice.get(id_1.index) }) else {
+                            return;
+                        }; // TODO revert this
+                        let Some(node_2) = (unsafe { nodes_slice.get(id_2.index) }) else {
+                            return;
+                        };
                         collide_fn(node_1, node_2);
                     });
             }

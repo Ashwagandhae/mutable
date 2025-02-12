@@ -1,10 +1,16 @@
+use std::fs::File;
+use std::io::BufReader;
+
 use itertools::iproduct;
 use nannou::prelude::*;
 mod cluster;
 mod world;
+use serde_json::Result;
 use world::collection::GenId;
 use world::node::{Node, NodeKind};
 use world::World;
+
+use crate::cli::Config;
 
 use self::cluster::Cluster;
 use self::world::node::{LifeState, SenseCalculate, SenseKind};
@@ -36,6 +42,7 @@ pub struct Model {
     pub world: World,
     pub clusters: Option<Vec<Cluster<GenId>>>,
     pub scene: Scene,
+    pub config: Config,
 }
 #[derive(Clone)]
 pub struct NodeInfo {
@@ -105,19 +112,34 @@ impl InputState {
         }
     }
 }
+
+fn world_from_file(file_path: &str) -> Result<World> {
+    let file = File::open(file_path).expect("Failed to open file");
+    let reader = BufReader::new(file);
+    let my_struct: World = serde_json::from_reader(reader)?;
+    println!("Loading world from {file_path}");
+    Ok(my_struct)
+}
 impl Model {
-    pub fn new() -> Model {
+    pub fn new(config: Config) -> Model {
         Model {
             camera: Camera {
                 pos: Point2::new(100.0, 100.0),
                 zoom: 2.0,
             },
-            world: World::new(),
+            world: match config.input_file {
+                Some(ref file_path) => {
+                    world_from_file(file_path).expect("Couldn't deserialize world file")
+                }
+                None => World::new(),
+            },
             input_state: InputState::new(),
             clusters: None,
             scene: Scene::World,
+            config,
         }
     }
+
     pub fn within_view(&self, pos: Point2) -> bool {
         const LOWER: f32 = WINDOW_SIZE as f32 / -2.0;
         const UPPER: f32 = WINDOW_SIZE as f32 / 2.0;
@@ -192,7 +214,9 @@ impl Model {
     }
     pub fn view_cluster(&self, draw: &Draw) {
         draw.background().color(BLACK);
-        let Some(clusters) = &self.clusters else {return};
+        let Some(clusters) = &self.clusters else {
+            return;
+        };
 
         // split background into clusters.len() squares
         let squares = (clusters.len() as f32).sqrt().ceil() as usize;
@@ -227,7 +251,9 @@ impl Model {
             .fold(Vec2::new(0., 0.), |sum, pos| sum + pos)
             / organism.node_ids().len() as f32;
         for node_id in organism.node_ids().iter() {
-            let Some(node) = self.world.nodes.get(*node_id) else {continue};
+            let Some(node) = self.world.nodes.get(*node_id) else {
+                continue;
+            };
             let pos = pos + node.pos() - average_pos;
             self.draw_node_at_pos(draw, node, pos, 1.0);
         }
@@ -272,15 +298,23 @@ impl Model {
                 self.draw_node(&draw, node);
             }
             for bone in self.world.bones.iter() {
-                let Some(node_1) = self.world.nodes.get(bone.parent_node) else {continue};
-                let Some(node_2) = self.world.nodes.get(bone.child_node) else {continue};
+                let Some(node_1) = self.world.nodes.get(bone.parent_node) else {
+                    continue;
+                };
+                let Some(node_2) = self.world.nodes.get(bone.child_node) else {
+                    continue;
+                };
                 let pos_1 = self.camera.world_to_view(node_1.pos());
                 let pos_2 = self.camera.world_to_view(node_2.pos());
                 self.draw_bone(&draw, pos_1, pos_2, self.camera.zoom);
             }
             for muscle in self.world.muscles.iter() {
-                let Some(node_1) = self.world.nodes.get(muscle.node_1) else {continue};
-                let Some(node_2) = self.world.nodes.get(muscle.node_2) else {continue};
+                let Some(node_1) = self.world.nodes.get(muscle.node_1) else {
+                    continue;
+                };
+                let Some(node_2) = self.world.nodes.get(muscle.node_2) else {
+                    continue;
+                };
                 let pos_1 = self.camera.world_to_view(node_1.pos());
                 let pos_2 = self.camera.world_to_view(node_2.pos());
                 self.draw_muscle(&draw, pos_1, pos_2, self.camera.zoom);
@@ -399,6 +433,7 @@ impl Model {
                             self.scene = Scene::Cluster;
                         }
                     },
+                    Key::S => self.save(),
                     _ => (),
                 },
                 _ => (),
@@ -434,7 +469,9 @@ impl Model {
                 let mut nearest_org = None;
                 for (org_id, org) in self.world.organisms.iter_with_ids() {
                     for node_id in org.node_ids().iter() {
-                        let Some(node) = &self.world.nodes.get(*node_id) else {continue};
+                        let Some(node) = &self.world.nodes.get(*node_id) else {
+                            continue;
+                        };
                         let dist = node.pos().distance(mouse_pos);
                         if dist < nearest_dist {
                             nearest_dist = dist;
@@ -454,7 +491,9 @@ impl Model {
             });
 
             // move node towards mouse pos
-            let Some(dragged) = &self.input_state.dragged else {return};
+            let Some(dragged) = &self.input_state.dragged else {
+                return;
+            };
             match &mut self.world.nodes.get_mut(dragged.node_id) {
                 Some(ref mut node) => {
                     let dist = node.pos().distance(mouse_pos);
@@ -466,16 +505,29 @@ impl Model {
             }
         } else {
             if let Some(dragged) = &self.input_state.dragged {
-                let Some(node) = &mut self.world.nodes.get(dragged.node_id) else {return};
+                let Some(node) = &mut self.world.nodes.get(dragged.node_id) else {
+                    return;
+                };
                 println!("Node: {:#?}", node);
                 if let Some(organism_id) = dragged.organism_id {
-                    let Some(organism) = &mut self.world.organisms.get(organism_id) else {return};
+                    let Some(organism) = &mut self.world.organisms.get(organism_id) else {
+                        return;
+                    };
                     println!("{}", organism.genome);
                     println!("{}", organism.brain);
                 }
                 self.input_state.selected = self.input_state.dragged.take();
             }
         }
+    }
+
+    pub fn save(&self) {
+        let Some(ref file_path) = self.config.output_file else {
+            return;
+        };
+        let file = File::create(file_path).expect("Failed to create file");
+        serde_json::to_writer(file, &self.world).expect("Failed to serialize World");
+        println!("Saved world to {file_path}");
     }
 }
 

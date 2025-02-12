@@ -1,6 +1,7 @@
 use nannou::prelude::{Vec2, PI};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Angle(pub f32);
 /// angle is between 0 and 2PI
 impl Angle {

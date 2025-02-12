@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use nannou::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use super::bone::Bone;
 use super::brain::Brain;
@@ -53,7 +54,7 @@ fn get_spawn_direction(nodes: &Collection<Node>, spawn_pos: Point2, children: &[
     angle.to_vec2()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Organism {
     pub genome: Genome,
     pub brain: Brain,
@@ -67,7 +68,9 @@ pub struct Organism {
 impl Organism {
     pub fn new(pos: Vec2, genome: Genome, energy: f32, nodes: &mut Collection<Node>) -> Organism {
         let (index, gene) = genome.body.get_start_gene();
-        let Gene::Build((gene, _)) = gene else { unreachable!() };
+        let Gene::Build((gene, _)) = gene else {
+            unreachable!()
+        };
         let index = genome.body.get_next_deeper(index);
         let brain = Brain::from_plan(&genome.brain);
         let node_id =
@@ -128,13 +131,23 @@ impl Organism {
         muscles: &mut Collection<Muscle>,
     ) {
         // make sure node is alive
-        let Some(Node { life_state: LifeState::Alive { .. }, .. }) = nodes.get(node_id) else { return };
+        let Some(Node {
+            life_state: LifeState::Alive { .. },
+            ..
+        }) = nodes.get(node_id)
+        else {
+            return;
+        };
         // get next build gene if there is one
-        let Some(real_gene_index) = nodes[node_id].unwrap_gene_index() else {return};
-        let Some((build_gene_index, (gene, build_id))) = self.genome.body.get_build(*real_gene_index) else {
-                *nodes[node_id].unwrap_gene_index_mut() = None;
-                return;
-            };
+        let Some(real_gene_index) = nodes[node_id].unwrap_gene_index() else {
+            return;
+        };
+        let Some((build_gene_index, (gene, build_id))) =
+            self.genome.body.get_build(*real_gene_index)
+        else {
+            *nodes[node_id].unwrap_gene_index_mut() = None;
+            return;
+        };
 
         let energy_cost = gene.energy_cost();
         if nodes[node_id].energy < energy_cost {
@@ -176,7 +189,7 @@ impl Organism {
             // attach muscle to parent--(node)--child
             nodes[node_id].unwrap_parent_id()
         };
-        let Some(node_1) = node_1 else {return};
+        let Some(node_1) = node_1 else { return };
         muscles.push(gene.build_muscle(node_id, node_1, child_id).unwrap());
     }
     pub fn reproduce_node(
@@ -186,9 +199,17 @@ impl Organism {
         collider: &Collider,
     ) {
         // make sure node is alive
-        let Some(Node { life_state: LifeState::Alive { .. }, .. }) = nodes.get(node_id) else { return };
+        let Some(Node {
+            life_state: LifeState::Alive { .. },
+            ..
+        }) = nodes.get(node_id)
+        else {
+            return;
+        };
         // make sure node is an egg
-        let NodeKind::Egg = nodes[node_id].unwrap_kind() else { return };
+        let NodeKind::Egg = nodes[node_id].unwrap_kind() else {
+            return;
+        };
 
         let children = get_node_children(nodes, node_id, &self.node_ids);
         let spawn_direction = get_spawn_direction(nodes, nodes[node_id].pos(), &children);
@@ -203,7 +224,9 @@ impl Organism {
         });
         let new_genome = self.next_child_genome.take().unwrap();
 
-        let Gene::Build((build_gene, _)) = new_genome.body.get_start_gene().1 else {unreachable!()};
+        let Gene::Build((build_gene, _)) = new_genome.body.get_start_gene().1 else {
+            unreachable!()
+        };
         let energy_cost = build_gene.energy_cost() + new_genome.body.len() as f32 / 10.;
 
         let min_child_distance = nodes[node_id].radius + build_gene.node_radius;

@@ -44,3 +44,27 @@ xcode-select --install
 
 1. Install a C compiler, depending on the distro.
 2. Install [Rust](https://www.rust-lang.org/tools/install).
+
+## Usage
+
+To start a new world with a random population:
+
+```bash
+cargo run --release
+```
+
+To start a new world from a file:
+
+```bash
+cargo run --release --input path/to/file.json
+```
+
+The `example-worlds` folder contains some worlds with interesting creatures.
+
+To start a new world with the option to save it to a file:
+
+```bash
+cargo run --release --output path/to/file.json
+```
+
+You can save the current state to the file by pressing `S` at any time.

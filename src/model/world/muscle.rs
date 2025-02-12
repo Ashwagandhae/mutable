@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use super::collection::{CollectionView, GenId};
 use super::node::{Node, MUSCLE_ENERGY_RATE};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Muscle {
     pub joint_node: GenId,
     pub node_1: GenId,
@@ -24,11 +26,14 @@ impl Muscle {
         }
     }
     pub fn update(&mut self, nodes: &mut CollectionView<Node>) {
-        let (Some(joint_node), Some(node_1), Some(node_2)) =
-            (nodes.get(self.joint_node), nodes.get(self.node_1), nodes.get(self.node_2)) else {
-                self.delete = true;
-                return;
-            };
+        let (Some(joint_node), Some(node_1), Some(node_2)) = (
+            nodes.get(self.joint_node),
+            nodes.get(self.node_1),
+            nodes.get(self.node_2),
+        ) else {
+            self.delete = true;
+            return;
+        };
         // dont move if joint node is dead
         if !joint_node.is_alive() {
             return;

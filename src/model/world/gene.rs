@@ -7,6 +7,7 @@ use super::node::{Node, NodeKind, SenseKind};
 use int_enum::IntEnum;
 
 use nannou::prelude::*;
+use serde::{Deserialize, Serialize};
 use strum::EnumCount;
 
 mod macros;
@@ -97,7 +98,7 @@ impl BuildGene {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BuildId(usize);
 
 impl BuildId {
@@ -106,7 +107,7 @@ impl BuildId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Gene {
     Build((BuildGene, BuildId)),
     Repeat,
@@ -141,7 +142,7 @@ impl Gene {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BodyPlan {
     genes: Vec<Gene>,
 }
@@ -317,7 +318,9 @@ impl BodyPlan {
                         .map(|build_index| {
                             self.get(build_index).map(|gene| {
                                 // gauranteed to be Build because of get_next_non_repeat
-                                let Gene::Build(gene) = gene else { unreachable!() };
+                                let Gene::Build(gene) = gene else {
+                                    unreachable!()
+                                };
                                 (build_index, gene)
                             })
                         })

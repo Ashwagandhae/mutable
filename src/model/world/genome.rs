@@ -4,8 +4,9 @@ use super::brain::BrainPlan;
 use super::gene::BodyPlan;
 use super::tag::Tag;
 use nannou::prelude::random;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Genome {
     pub body: BodyPlan,
     pub brain: BrainPlan,

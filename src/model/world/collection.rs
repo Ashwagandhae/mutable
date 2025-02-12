@@ -1,17 +1,19 @@
 use std::ops::{Index, IndexMut};
 
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Copy, Serialize, Deserialize)]
 pub struct GenId {
     pub index: usize,
     gen: usize,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Collection<Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'a> Deserialize<'a>,
 {
+    #[serde(bound = "")]
     items: Vec<Option<Item>>,
     removed: Vec<usize>,
     gens: Vec<usize>,
@@ -20,7 +22,7 @@ where
 #[allow(dead_code)]
 impl<Item> Collection<Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'a> Deserialize<'a>,
 {
     pub fn new() -> Collection<Item> {
         Collection {
@@ -204,7 +206,7 @@ where
 
 impl<Item> Index<GenId> for Collection<Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'a> Deserialize<'a>,
 {
     type Output = Item;
 
@@ -215,7 +217,7 @@ where
 
 impl<Item> IndexMut<GenId> for Collection<Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'a> Deserialize<'a>,
 {
     fn index_mut(&mut self, index: GenId) -> &mut Self::Output {
         self.get_mut(index).unwrap()
@@ -225,14 +227,14 @@ where
 /// A wrapper around a collection that guarantees no push or remove operations, but allows modification of the items.
 pub struct CollectionView<'a, Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'b> Deserialize<'b>,
 {
     inner: &'a mut Collection<Item>,
 }
 
 impl<'a, Item> CollectionView<'a, Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'b> Deserialize<'b>,
 {
     pub fn get(&self, id: GenId) -> Option<&Item> {
         self.inner.get(id)
@@ -259,7 +261,7 @@ where
 
 impl<Item> Index<GenId> for CollectionView<'_, Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'b> Deserialize<'b>,
 {
     type Output = Item;
 
@@ -270,7 +272,7 @@ where
 
 impl<Item> IndexMut<GenId> for CollectionView<'_, Item>
 where
-    Item: Send,
+    Item: Send + Serialize + for<'b> Deserialize<'b>,
 {
     fn index_mut(&mut self, index: GenId) -> &mut Self::Output {
         self.get_mut(index).unwrap()

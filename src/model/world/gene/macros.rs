@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! make_gene_struct {
     ( $vis:vis $name:ident { $( $var:ident: $ty:ty = $lower:tt..$upper:tt  ),* , } ) => {
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Serialize, Deserialize)]
         #[allow(clippy::identity_op)]
         #[allow(unused_parens)]
         $vis struct $name {

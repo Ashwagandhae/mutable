@@ -1,5 +1,7 @@
 use nannou::prelude::*;
+mod cli;
 mod model;
+use cli::get_config;
 use model::Model;
 use model::WINDOW_SIZE;
 
@@ -13,7 +15,7 @@ fn main() {
 }
 
 fn model(_app: &App) -> Model {
-    Model::new()
+    Model::new(get_config())
 }
 
 fn update(app: &App, model: &mut Model, update: Update) {

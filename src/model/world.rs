@@ -27,6 +27,7 @@ use organism::Organism;
 use math::Angle;
 use node::{LifeState, NodeKind};
 use rayon::prelude::ParallelIterator;
+use serde::{Deserialize, Serialize};
 
 use crate::model::world::{math::sense_angle_diff, node::SenseKind};
 
@@ -45,7 +46,7 @@ fn every(ticks: u64, tick: u64, run: impl FnOnce()) {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct World {
     pub nodes: Collection<Node>,
     pub bones: Collection<Bone>,
@@ -135,7 +136,10 @@ impl World {
                         ..
                     },
                 ..
-            }) = self.nodes.get_index(i) else {continue};
+            }) = self.nodes.get_index(i)
+            else {
+                continue;
+            };
             let parent_dead = match self.nodes.get(*parent_id) {
                 Some(node) => !node.is_alive(),
                 None => true,
@@ -156,7 +160,9 @@ impl World {
             }
         });
         for i in 0..self.nodes.full_len() {
-            let Some(node) = self.nodes.get_index(i) else {continue};
+            let Some(node) = self.nodes.get_index(i) else {
+                continue;
+            };
             if node.splat {
                 let new_radius = node.radius * SPLAT_RADIUS_DELTA;
                 let energy = node.energy / 2.0;
@@ -189,27 +195,39 @@ impl World {
 
         // let eye nodes see
         for i in 0..self.nodes.full_len() {
-            let Some(node) = self.nodes.get_index(i) else {continue};
+            let Some(node) = self.nodes.get_index(i) else {
+                continue;
+            };
             let LifeState::Alive {
                 sense: Some((SenseKind::Eye, SenseCalculate::Calculate(_))),
                 parent: Some((_, angle)),
                 ..
-            } = node.life_state else {continue};
+            } = node.life_state
+            else {
+                continue;
+            };
             let origin = node.pos();
             let vision = node.radius * 10.0;
             let dir = angle.to_vec2().normalize_or_zero() * -1. * vision;
             let Some(seen_node) = self
                 .collider
                 .ray_collides_iter(&self.nodes, origin, dir)
-                .find(|node| ray_collides_circle(origin, dir, node.pos(), node.radius)) else {continue};
+                .find(|node| ray_collides_circle(origin, dir, node.pos(), node.radius))
+            else {
+                continue;
+            };
             let dist = origin.distance(seen_node.pos());
-            let Some(Node{
-                life_state: LifeState::Alive {
-                    sense: Some((_, SenseCalculate::Calculate(ref mut sense))),
-                    ..
-                },
+            let Some(Node {
+                life_state:
+                    LifeState::Alive {
+                        sense: Some((_, SenseCalculate::Calculate(ref mut sense))),
+                        ..
+                    },
                 ..
-            }) = self.nodes.get_index_mut(i) else {unreachable!()};
+            }) = self.nodes.get_index_mut(i)
+            else {
+                unreachable!()
+            };
             *sense = 1.0 - dist / vision;
         }
 

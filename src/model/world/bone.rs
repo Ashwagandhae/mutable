@@ -1,11 +1,12 @@
 use nannou::prelude::Vec2;
+use serde::{Deserialize, Serialize};
 
 use super::{
     collection::{CollectionView, GenId},
     math::{is_zero, Angle},
     node::{LifeState, Node},
 };
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bone {
     pub parent_node: GenId,
     pub child_node: GenId,
@@ -24,7 +25,9 @@ impl Bone {
         }
     }
     pub fn update(&mut self, nodes: &mut CollectionView<Node>) {
-        let (Some(parent_node), Some(child_node)) = (nodes.get(self.parent_node), nodes.get(self.child_node)) else {
+        let (Some(parent_node), Some(child_node)) =
+            (nodes.get(self.parent_node), nodes.get(self.child_node))
+        else {
             self.delete = true;
             return;
         };
@@ -47,7 +50,11 @@ impl Bone {
         // let stroke_amp = vel.dot(facing);
         // let friction = -facing * stroke_amp * 0.8;
 
-        let (Some(parent_node), Some(child_node)) = nodes.get_2_mut(self.parent_node, self.child_node) else {unreachable!()};
+        let (Some(parent_node), Some(child_node)) =
+            nodes.get_2_mut(self.parent_node, self.child_node)
+        else {
+            unreachable!()
+        };
         if !is_zero(distance_diff) {
             *parent_node.pos_mut() += pos_change;
             *child_node.pos_mut() -= pos_change;
