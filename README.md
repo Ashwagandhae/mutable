@@ -1,5 +1,7 @@
 # Mutable
 
+![Screenshot of Mutable showing worm-like creatures moving through grass](./images/worms.gif)
+
 An evolution simulator written in Rust. Each organism is represented as a tree of different nodes with different jobs, and can use those nodes to sense events in the world and react to them with a neural network. The evolution of plants, detritivores, and herbivores has been observed.
 
 Inspired by and based on:
